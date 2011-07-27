@@ -8,6 +8,10 @@ var require;
 var define;
 
 (function () {
+	/* These regexs are taken from requirejs */
+    var commentRegExp = /(\/\*([\s\S]*?)\*\/|\/\/(.*)$)/mg;
+    var cjsRequireRegExp = /[^.]require\(["']([^'"\s]+)["']\)/g;
+    
 	Iterator = function(array) {
 		this.array = array;
 		this.current = 0;
@@ -82,10 +86,19 @@ var define;
 		}
 		modules[id] = {};
 		modules[id].id = id;
-		if (cfg.forceLoad) {
-			localStorage.removeItem(id);
+		var url = id;
+		if (aliases[url]) {
+			url = aliases[url];
 		}
-		var storedModule = localStorage[id];
+        if (url.charAt(0) !== '/') {
+        	url = cfg.baseUrl + url; 
+        }
+    	url += ".js";
+    	var key = window.location.pathname + url;
+		if (cfg.forceLoad) {
+			localStorage.removeItem(key);
+		}
+		var storedModule = localStorage[key];
 		if (scriptText) {
 			paths.push(id);
 			_loadScript(scriptText);
@@ -94,20 +107,12 @@ var define;
                 cb(exports);
             });
 		} else if (storedModule === undefined || storedModule === null) {
-			var url = id;
-			if (aliases[url]) {
-				url = aliases[url];
-			}
-	        if (url.charAt(0) !== '/') {
-	        	url = cfg.baseUrl + url; 
-	        	url += ".js";
-	        }
 			var xhr = new XMLHttpRequest();
 			xhr.open("GET", url, true);
 			xhr.onreadystatechange = function() {
 				if (xhr.readyState == 4) {
 					if (xhr.status == 200) {
-						localStorage[id] = xhr.responseText;
+						localStorage[key] = xhr.responseText;
 						paths.push(id);
 						_loadScript(xhr.responseText);
 						_loadModuleDependencies(id, function(exports){
@@ -138,6 +143,9 @@ var define;
 			if (itr.hasMore()) {
 				var dependency = itr.next();
 				if (dependency.match(".+!.+")) {
+					if (dependency.match("^~#")) {
+						dependency = dependency.substring(2);
+					}
 					var pluginName = dependency.substring(0, dependency.indexOf('!'));
 					pluginName = _expand(pluginName);
 					var pluginModuleName = dependency.substring(dependency.indexOf('!')+1);
@@ -155,17 +163,22 @@ var define;
 					args.push(m.exports);
 					iterate(itr);
 				} else {
+					var add = true;
+					if (dependency.match("^~#")) {
+						dependency = dependency.substring(2);
+						add = false;
+					}
 					_loadModule(dependency, function(module){
-						args.push(module);
+						if (add) {
+							args.push(module);
+						}
 						iterate(itr);
 					});
 				}
 			} else {
 				if (m.factory !== undefined) {
 					if (args.length < 1) {
-						args.push(modules["require"].exports);
-						args.push(m);
-						args.push(m.exports);
+						args = args.concat(modules["require"].exports, m.exports, m);
 					}
 					var ret = m.factory.apply(null, args);
 					if (ret) {
@@ -238,6 +251,9 @@ var define;
 			dependencies = [];
 		}
 		if (isFunction(factory)) {
+			factory.toString().replace(commentRegExp, "").replace(cjsRequireRegExp, function (match, dep) {
+				dependencies.push("~#"+dep);
+            });
 			modules[id].factory = factory;
 		} else {
 			modules[id].literal = factory;
