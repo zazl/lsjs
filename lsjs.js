@@ -85,7 +85,23 @@ var define;
 	function _loadModule(id, cb, scriptText) {
 		id = _expand(id);
 		if (modules[id] !== undefined) {
-			cb(modules[id].exports);
+			var count = 0;
+			function waitForLoad() {
+				count += 100;
+				if (count > 10000) {
+					throw new Error("timeout while waiting for ["+id+"] to load");
+				}
+				if (modules[id].exports === undefined) {
+					setTimeout(function(){ waitForLoad(); }, 100);
+				} else {
+					cb(modules[id].exports);
+				}
+			}
+			if (modules[id].exports === undefined) {
+				setTimeout(function(){ waitForLoad(); }, 100);
+			} else {
+				cb(modules[id].exports);
+			}
 			return;
 		}
 		modules[id] = {};
