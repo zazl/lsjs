@@ -67,11 +67,15 @@ var define;
 		return segments.join('/');
 	};
 	
-	function _expand(path) {
+	function _expand(path, parent) {
 		var isRelative = path.search(/^\.\/|^\.\.\//) === -1 ? false : true;
 		if (isRelative) {
 			var parentPath = paths.length > 0 ? paths[paths.length-1] : "";
-			parentPath = parentPath.substring(0, parentPath.lastIndexOf('/')+1);
+			if (parent) {
+				parentPath = parent;
+			} else {
+				parentPath = parentPath.substring(0, parentPath.lastIndexOf('/')+1);
+			}
 			path = parentPath + path;
 			path = _normalize(path);
 		}
@@ -143,18 +147,22 @@ var define;
 			if (itr.hasMore()) {
 				var dependency = itr.next();
 				if (dependency.match(".+!.+")) {
+					var add = true;
 					if (dependency.match("^~#")) {
 						dependency = dependency.substring(2);
+						add = false;
 					}
 					var pluginName = dependency.substring(0, dependency.indexOf('!'));
 					pluginName = _expand(pluginName);
 					var pluginModuleName = dependency.substring(dependency.indexOf('!')+1);
 					_loadPlugin(pluginName, pluginModuleName, function(pluginInstance) {
-						args.push(pluginInstance);
+						if (add) {
+							args.push(pluginInstance);
+						}
 						iterate(itr);
 					});
 				} else if (dependency === 'require') {
-					args.push(modules["require"].exports);
+					args.push(_createRequire(paths.length > 0 ? paths[paths.length-1] : ""));
 					iterate(itr);
 				} else if (dependency === 'module') {
 					args.push(m);
@@ -178,7 +186,8 @@ var define;
 			} else {
 				if (m.factory !== undefined) {
 					if (args.length < 1) {
-						args = args.concat(modules["require"].exports, m.exports, m);
+						var req = _createRequire(paths.length > 0 ? paths[paths.length-1] : "");
+						args = args.concat(req, m.exports, m);
 					}
 					var ret = m.factory.apply(null, args);
 					if (ret) {
@@ -204,16 +213,7 @@ var define;
 				cb(modules[pluginName+"!"+pluginModuleName].exports);
 				return;
 			}
-			var req = require;
-			req.toUrl = function(moduleResource) {
-				return _expand(moduleResource);
-			};
-			req.defined = function(moduleName) {
-				return _expand(moduleName) in modules;
-			};
-			req.specified = function(moduleName) {
-				return _expand(moduleName) in modules;
-			};
+			var req = _createRequire(paths.length > 0 ? paths[paths.length-1] : "");
 			var load = function(pluginInstance){
 		    	modules[pluginName+"!"+pluginModuleName] = {};
 		    	modules[pluginName+"!"+pluginModuleName].exports = pluginInstance;
@@ -235,10 +235,23 @@ var define;
 		document.getElementsByTagName("head")[0].appendChild(script);
 	};
 	
-	function _syncrequire(id) {
-		id = _expand(id);
-		return modules[id] === undefined ? undefined : modules[id].exports;
-	};
+	function _createRequire(path) {
+		var req = function(dependencies, callback) {
+			return require(dependencies, callback);
+		};
+		req.toUrl = function(moduleResource) {
+			return _expand(moduleResource);
+		};
+		req.defined = function(moduleName) {
+			return _expand(moduleName) in modules;
+		};
+		req.specified = function(moduleName) {
+			return _expand(moduleName) in modules;
+		};
+		req.path = path.substring(0, path.lastIndexOf('/')+1);
+		
+		return req;
+	}
 
 	define = function (id, dependencies, factory) {
 		if (!isString(id)) {
@@ -267,7 +280,23 @@ var define;
 
 	require = function (dependencies, callback) {
 		if (isString(dependencies)) {
-			return _syncrequire(dependencies);
+			var id = dependencies;
+			id = _expand(id, require.caller.path);
+			if (id.match(".+!.+")) {
+				var pluginName = id.substring(0, id.indexOf('!'));
+				pluginName = _expand(pluginName, require.caller.path);
+				var plugin = modules[pluginName].exports;
+				var pluginModuleName = id.substring(id.indexOf('!')+1);
+				if (plugin.normalize) {
+					pluginModuleName = plugin.normalize(pluginModuleName, function(path){
+						return _expand(path, require.caller.path);
+					});
+				} else {
+					pluginModuleName = _expand(pluginModuleName, require.caller.path);
+				}
+				id = pluginName+"!"+pluginModuleName;
+			}
+			return modules[id] === undefined ? undefined : modules[id].exports;
 		} else if (isArray(dependencies)) {
 			var args = [];
 			var iterate = function(itr) {
