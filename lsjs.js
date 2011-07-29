@@ -41,6 +41,7 @@ var define;
 	var modules = {};
 	var paths = [];
 	var aliases = {};
+	var reload = {};
 	
 	var opts = Object.prototype.toString;
 	
@@ -96,7 +97,7 @@ var define;
 				} else {
 					cb(modules[id].exports);
 				}
-			}
+			};
 			if (modules[id].exports === undefined) {
 				setTimeout(function(){ waitForLoad(); }, 100);
 			} else {
@@ -115,44 +116,54 @@ var define;
         }
     	url += ".js";
     	var key = window.location.pathname + url;
-		if (cfg.forceLoad) {
+    	
+		if (cfg.forceLoad || url in reload) {
 			localStorage.removeItem(key);
 		}
-		var storedModule = localStorage[key];
-		if (scriptText) {
-			paths.push(id);
-			_loadScript(scriptText);
-			_loadModuleDependencies(id, function(exports){
-				paths.pop();
-                cb(exports);
-            });
-		} else if (storedModule === undefined || storedModule === null) {
-			var xhr = new XMLHttpRequest();
-			xhr.open("GET", url, true);
-			xhr.onreadystatechange = function() {
-				if (xhr.readyState == 4) {
-					if (xhr.status == 200) {
-						localStorage[key] = xhr.responseText;
-						paths.push(id);
-						_loadScript(xhr.responseText);
-						_loadModuleDependencies(id, function(exports){
-							paths.pop();
-			                cb(exports);
-			            });
-					} else {
-						throw new Error("Unable to load ["+id+"]:"+xhr.status);
-					}
-				}
-			};
-			xhr.send(null);				
-		} else {
-			paths.push(id);
-			_loadScript(storedModule);
-			_loadModuleDependencies(id, function(exports){
-				paths.pop();
-                cb(exports);
-            });
+		
+		if (localStorage[key] !== undefined && localStorage[key] !== null) {
+			var storedModule = JSON.parse(localStorage[key]);
 		}
+		
+		if (scriptText) {
+			_inject(id, scriptText, cb);
+		} else if (storedModule === undefined || storedModule === null) {
+			_getModule(url, function(scriptSrc, ts){
+				localStorage[key] = JSON.stringify({src: scriptSrc, timestamp: ts});
+				_inject(id, scriptSrc, cb);
+			});
+		} else {
+			_inject(id, storedModule.src, cb);
+		}
+	};
+	
+	function _inject(id, scriptSrc, cb) {
+		paths.push(id);
+		var script = document.createElement('script'); 
+		script.type = "text/javascript"; 
+		script.charset = "utf-8";
+		var scriptContent = document.createTextNode(scriptSrc);
+		script.appendChild(scriptContent);
+		document.getElementsByTagName("head")[0].appendChild(script);
+		_loadModuleDependencies(id, function(exports){
+			paths.pop();
+            cb(exports);
+        });
+	};
+	
+	function _getModule(url, cb) {
+		var xhr = new XMLHttpRequest();
+		xhr.open("GET", url+"?nocache="+new Date().valueOf(), true);
+		xhr.onreadystatechange = function() {
+			if (xhr.readyState == 4) {
+				if (xhr.status == 200) {
+					cb(xhr.responseText, xhr.getResponseHeader("Last-Modified"));
+				} else {
+					throw new Error("Unable to load ["+id+"]:"+xhr.status);
+				}
+			}
+		};
+		xhr.send(null);				
 	};
 	
 	function _loadModuleDependencies(id, cb) {
@@ -242,15 +253,6 @@ var define;
 		});
 	};
 	
-	function _loadScript(scriptSrc) {
-		var script = document.createElement('script'); 
-		script.type = "text/javascript"; 
-		script.charset = "utf-8";
-		var scriptContent = document.createTextNode(scriptSrc);
-		script.appendChild(scriptContent);
-		document.getElementsByTagName("head")[0].appendChild(script);
-	};
-	
 	function _createRequire(path) {
 		var req = function(dependencies, callback) {
 			return require(dependencies, callback);
@@ -265,9 +267,38 @@ var define;
 			return _expand(moduleName) in modules;
 		};
 		req.path = path.substring(0, path.lastIndexOf('/')+1);
-		
+		req.ready = require.ready;
+        req.nameToUrl = require.nameToUrl;
 		return req;
-	}
+	};
+	
+	function _getTimestamps(url, cb) {
+		var xhr = new XMLHttpRequest();
+		xhr.open("POST", url, true);
+		var currentTimestamps = [];
+		for (var i=0; i < localStorage.length; i++) {
+			var key = localStorage.key(i);
+			var storedModule = JSON.parse(localStorage[key]);
+			if (key.match("^"+window.location.pathname)) {
+				currentTimestamps.push({url: key.substring(window.location.pathname.length), timestamp: storedModule.timestamp});
+			}
+		}
+		
+		xhr.onreadystatechange = function() {
+			if (xhr.readyState == 4) {
+				if (xhr.status == 200) {
+					var urlsToReload = JSON.parse(xhr.responseText);
+					for (var i = 0; i < urlsToReload.length; i++) {
+						reload[urlsToReload[i]] = urlsToReload[i];
+					}
+					cb();
+				} else {
+					throw new Error("Unable to get timestamps via the url ["+url+"]:"+xhr.status);
+				}
+			}
+		};
+		xhr.send(JSON.stringify(currentTimestamps));				
+	};
 
 	define = function (id, dependencies, factory) {
 		if (!isString(id)) {
@@ -371,11 +402,19 @@ var define;
 			callback = dependencies;
 			dependencies = [];
 		}
-		
-		if (isFunction(callback)) {
-			require(dependencies, callback);
+		function callRequire(dependencies, callback) {
+			if (isFunction(callback)) {
+				require(dependencies, callback);
+			} else {
+				require(dependencies);
+			}
+		};
+		if (cfg.timestampUrl) {
+			_getTimestamps(cfg.timestampUrl, function(){
+				callRequire(dependencies, callback);
+			});
 		} else {
-			require(dependencies);
+			callRequire(dependencies, callback);
 		}
 	};
 	
