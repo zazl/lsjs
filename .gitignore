@@ -4,3 +4,4 @@ compile*feature.xml
 clientdb.xml
 .project
 .settings/
+.classpath
