@@ -49,6 +49,10 @@ var define;
     function isArray(it) { return opts.call(it) === "[object Array]"; };
     function isString(it) { return (typeof it == "string" || it instanceof String); };
     
+    function _getCurrentPath() {
+    	return paths.length > 0 ? paths[paths.length-1] : "";
+    }
+    
 	function _normalize(path) {
 		var segments = path.split('/');
 		var skip = 0;
@@ -71,13 +75,11 @@ var define;
 	function _expand(path, parent) {
 		var isRelative = path.search(/^\.\/|^\.\.\//) === -1 ? false : true;
 		if (isRelative) {
-			var parentPath = paths.length > 0 ? paths[paths.length-1] : "";
 			if (parent) {
-				parentPath = parent;
+				path = parent + path;
 			} else {
-				parentPath = parentPath.substring(0, parentPath.lastIndexOf('/')+1);
+				path = _getCurrentPath() + "/../" + path;
 			}
-			path = parentPath + path;
 			path = _normalize(path);
 		}
 		return path;
@@ -115,6 +117,7 @@ var define;
         	url = cfg.baseUrl + url; 
         }
     	url += ".js";
+    	modules[id].uri = url;
     	var key = window.location.pathname + url;
     	
 		if (cfg.forceLoad || url in reload) {
@@ -145,6 +148,7 @@ var define;
 		var scriptContent = document.createTextNode(scriptSrc);
 		script.appendChild(scriptContent);
 		document.getElementsByTagName("head")[0].appendChild(script);
+        //eval(scriptSrc+"//@ sourceURL="+id);
 		_loadModuleDependencies(id, function(exports){
 			paths.pop();
             cb(exports);
@@ -189,7 +193,7 @@ var define;
 						iterate(itr);
 					});
 				} else if (dependency === 'require') {
-					args.push(_createRequire(paths.length > 0 ? paths[paths.length-1] : ""));
+					args.push(_createRequire(_getCurrentPath()));
 					iterate(itr);
 				} else if (dependency === 'module') {
 					args.push(m);
@@ -213,7 +217,7 @@ var define;
 			} else {
 				if (m.factory !== undefined) {
 					if (args.length < 1) {
-						var req = _createRequire(paths.length > 0 ? paths[paths.length-1] : "");
+						var req = _createRequire(_getCurrentPath());
 						args = args.concat(req, m.exports, m);
 					}
 					var ret = m.factory.apply(null, args);
@@ -240,7 +244,7 @@ var define;
 				cb(modules[pluginName+"!"+pluginModuleName].exports);
 				return;
 			}
-			var req = _createRequire(paths.length > 0 ? paths[paths.length-1] : "");
+			var req = _createRequire(_getCurrentPath());
 			var load = function(pluginInstance){
 		    	modules[pluginName+"!"+pluginModuleName] = {};
 		    	modules[pluginName+"!"+pluginModuleName].exports = pluginInstance;
@@ -304,7 +308,7 @@ var define;
 		if (!isString(id)) {
 			factory = dependencies;
 			dependencies = id;
-			id = paths[paths.length-1];
+			id = _getCurrentPath();
 		}
 		if (!isArray(dependencies)) {
 			factory = dependencies;
