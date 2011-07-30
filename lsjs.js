@@ -159,7 +159,7 @@ var define;
 				if (xhr.status == 200) {
 					cb(xhr.responseText, xhr.getResponseHeader("Last-Modified"));
 				} else {
-					throw new Error("Unable to load ["+id+"]:"+xhr.status);
+					throw new Error("Unable to load ["+url+"]:"+xhr.status);
 				}
 			}
 		};
