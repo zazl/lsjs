@@ -39,8 +39,9 @@ var define;
 	}
 	
 	var modules = {};
-	var paths = [];
-	var aliases = {};
+	var moduleStack = [];
+	var paths = {};
+	var pkgs = {};
 	var reload = {};
 	
 	var opts = Object.prototype.toString;
@@ -49,15 +50,15 @@ var define;
     function isArray(it) { return opts.call(it) === "[object Array]"; };
     function isString(it) { return (typeof it == "string" || it instanceof String); };
     
-    function _getCurrentPath() {
-    	return paths.length > 0 ? paths[paths.length-1] : "";
+    function _getCurrentId() {
+    	return moduleStack.length > 0 ? moduleStack[moduleStack.length-1].id : "";
     }
     
 	function _normalize(path) {
 		var segments = path.split('/');
 		var skip = 0;
 
-		for (var i = segments.length; i >= 0; i--) {
+		for (var i = (segments.length-1); i >= 0; i--) {
 			var segment = segments[i];
 			if (segment === '.') {
 				segments.splice(i, 1);
@@ -73,51 +74,89 @@ var define;
 	};
 	
 	function _expand(path, parent) {
-		var isRelative = path.search(/^\.\/|^\.\.\//) === -1 ? false : true;
-		if (isRelative) {
+		if (path.search(/^\.\/|^\.\.\//) !== -1 ) {
 			if (parent) {
 				path = parent + path;
 			} else {
-				path = _getCurrentPath() + "/../" + path;
+				path = _getCurrentId() + "/../" + path;
 			}
 			path = _normalize(path);
 		}
 		return path;
 	};
 	
+	function  _idToUrl(path, module) {
+		var parentModule = moduleStack.length > 0 ? moduleStack[moduleStack.length-1] : undefined;
+		var parentAlias = parentModule ? parentModule.alias : undefined;
+		
+		if (path.search(/^\.\/|^\.\.\//) !== -1) {
+			if (parentAlias) {
+				path = parentAlias + "/../" + path;
+			} else {
+				path = _getCurrentId() + "/../" + path;
+			}
+		}
+		
+		path = _normalize(path);
+		if (paths[path]) {
+			return paths[path];
+		}
+		
+		var aliasFound = false;
+		segments = path.split("/");
+		for (var i = segments.length; i >= 0; i--) {
+			var pkg;
+            var parent = segments.slice(0, i).join("/");
+            if ((pkg = pkgs[parent])) {
+            	aliasFound = true;
+            	var pkgPath;
+                if (path === pkg.name) {
+                    pkgPath = pkg.location + '/' + pkg.main;
+                } else {
+                    pkgPath = pkg.location;
+                }
+    			segments.splice(0, i, pkgPath);
+    			break;
+            }
+		}
+		path = segments.join("/");
+		if (aliasFound) {
+			module.alias = path;
+		}
+		return path;
+	};
+	
 	function _loadModule(id, cb, scriptText) {
-		id = _expand(id);
-		if (modules[id] !== undefined) {
+		var expandedId = _expand(id);
+		if (modules[expandedId] !== undefined) {
 			var count = 0;
 			function waitForLoad() {
 				count += 100;
 				if (count > 10000) {
 					throw new Error("timeout while waiting for ["+id+"] to load");
 				}
-				if (modules[id].exports === undefined) {
+				if (modules[expandedId].exports === undefined) {
 					setTimeout(function(){ waitForLoad(); }, 100);
 				} else {
 					cb(modules[id].exports);
 				}
 			};
-			if (modules[id].exports === undefined) {
+			if (modules[expandedId].exports === undefined) {
 				setTimeout(function(){ waitForLoad(); }, 100);
 			} else {
-				cb(modules[id].exports);
+				cb(modules[expandedId].exports);
 			}
 			return;
 		}
-		modules[id] = {};
-		modules[id].id = id;
-		var url = id;
-		if (aliases[url]) {
-			url = aliases[url];
-		}
+		modules[expandedId] = {};
+		modules[expandedId].id = expandedId;
+		
+		var url = _idToUrl(id, modules[expandedId]);
         if (url.charAt(0) !== '/') {
         	url = cfg.baseUrl + url; 
         }
     	url += ".js";
-    	modules[id].uri = url;
+    	
     	var key = window.location.pathname + url;
     	
 		if (cfg.forceLoad || url in reload) {
@@ -129,28 +168,30 @@ var define;
 		}
 		
 		if (scriptText) {
-			_inject(id, scriptText, cb);
+			_inject(modules[expandedId], scriptText, cb);
 		} else if (storedModule === undefined || storedModule === null) {
 			_getModule(url, function(scriptSrc, ts){
 				localStorage[key] = JSON.stringify({src: scriptSrc, timestamp: ts});
-				_inject(id, scriptSrc, cb);
+				_inject(modules[expandedId], scriptSrc, cb);
 			});
 		} else {
-			_inject(id, storedModule.src, cb);
+			_inject(modules[expandedId], storedModule.src, cb);
 		}
 	};
 	
-	function _inject(id, scriptSrc, cb) {
-		paths.push(id);
+	function _inject(module, scriptSrc, cb) {
+		moduleStack.push(module);
+		/*
 		var script = document.createElement('script'); 
 		script.type = "text/javascript"; 
 		script.charset = "utf-8";
 		var scriptContent = document.createTextNode(scriptSrc);
 		script.appendChild(scriptContent);
 		document.getElementsByTagName("head")[0].appendChild(script);
-        //eval(scriptSrc+"//@ sourceURL="+id);
-		_loadModuleDependencies(id, function(exports){
-			paths.pop();
+		*/
+        eval(scriptSrc+"//@ sourceURL="+module.id);
+		_loadModuleDependencies(module.id, function(exports){
+			moduleStack.pop();
             cb(exports);
         });
 	};
@@ -193,7 +234,7 @@ var define;
 						iterate(itr);
 					});
 				} else if (dependency === 'require') {
-					args.push(_createRequire(_getCurrentPath()));
+					args.push(_createRequire());
 					iterate(itr);
 				} else if (dependency === 'module') {
 					args.push(m);
@@ -217,7 +258,7 @@ var define;
 			} else {
 				if (m.factory !== undefined) {
 					if (args.length < 1) {
-						var req = _createRequire(_getCurrentPath());
+						var req = _createRequire();
 						args = args.concat(req, m.exports, m);
 					}
 					var ret = m.factory.apply(null, args);
@@ -244,7 +285,7 @@ var define;
 				cb(modules[pluginName+"!"+pluginModuleName].exports);
 				return;
 			}
-			var req = _createRequire(_getCurrentPath());
+			var req = _createRequire();
 			var load = function(pluginInstance){
 		    	modules[pluginName+"!"+pluginModuleName] = {};
 		    	modules[pluginName+"!"+pluginModuleName].exports = pluginInstance;
@@ -257,7 +298,8 @@ var define;
 		});
 	};
 	
-	function _createRequire(path) {
+	function _createRequire() {
+		var path = _getCurrentId();
 		var req = function(dependencies, callback) {
 			return require(dependencies, callback);
 		};
@@ -282,9 +324,13 @@ var define;
 		var currentTimestamps = [];
 		for (var i=0; i < localStorage.length; i++) {
 			var key = localStorage.key(i);
-			var storedModule = JSON.parse(localStorage[key]);
 			if (key.match("^"+window.location.pathname)) {
-				currentTimestamps.push({url: key.substring(window.location.pathname.length), timestamp: storedModule.timestamp});
+				try {
+					var storedModule = JSON.parse(localStorage[key]);
+					currentTimestamps.push({url: key.substring(window.location.pathname.length), timestamp: storedModule.timestamp});
+				} catch (e) {
+					console.log("Failed to parse local storage value ["+localStorage[key]+"] : "+e);
+				}
 			}
 		}
 		
@@ -308,7 +354,7 @@ var define;
 		if (!isString(id)) {
 			factory = dependencies;
 			dependencies = id;
-			id = _getCurrentPath();
+			id = _getCurrentId();
 		}
 		if (!isArray(dependencies)) {
 			factory = dependencies;
@@ -386,14 +432,13 @@ var define;
 			if (cfg.paths) {
 				for (var p in cfg.paths) {
 					var path = cfg.paths[p];
-					aliases[p] = path;
+					paths[p] = path;
 				}
 			}
 			if (cfg.packages) {
 				for (var i = 0; i < cfg.packages.length; i++) {
 					var pkg = cfg.packages[i];
-					var path = pkg.location + "/" + pkg.main;
-					aliases[pkg.name] = path;
+					pkgs[pkg.name] = pkg;
 				}
 			}
 			cfg.baseUrl = cfg.baseUrl || "./";
