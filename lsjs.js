@@ -85,7 +85,7 @@ var define;
 		return path;
 	};
 	
-	function  _idToUrl(path, module) {
+	function _idToUrl(path, module) {
 		var parentModule = moduleStack.length > 0 ? moduleStack[moduleStack.length-1] : undefined;
 		var parentAlias = parentModule ? parentModule.alias : undefined;
 		
