@@ -73,13 +73,15 @@ var define;
 		return segments.join('/');
 	};
 	
-	function _expand(path, parent) {
+	function _expand(path) {
+		if (path == "." || path == "..") {
+			path += "/";
+		} 
 		if (path.search(/^\.\/|^\.\.\//) !== -1 ) {
-			if (parent !== undefined) {
-				path = parent + "/../" + path;
-			} else {
-				path = _getCurrentId() + "/../" + path;
-			}
+            if (path.match("/$")) {
+                path = path.substring(0, path.length-1);
+            }
+			path = _getCurrentId() + "/../" + path;
 			path = _normalize(path);
 		}
 		return path;
@@ -89,7 +91,13 @@ var define;
 		var parentModule = moduleStack.length > 0 ? moduleStack[moduleStack.length-1] : undefined;
 		var parentAlias = parentModule ? parentModule.alias : undefined;
 		
+		if (path === "." || path === "..") {
+			path += "/";
+		} 
 		if (path.search(/^\.\/|^\.\.\//) !== -1) {
+            if (path.match("/$")) {
+                path = path.substring(0, path.length-1);
+            }
 			if (parentAlias) {
 				path = parentAlias + "/../" + path;
 			} else {
@@ -234,7 +242,7 @@ var define;
 						iterate(itr);
 					});
 				} else if (dependency === 'require') {
-					args.push(_createRequire());
+					args.push(_createRequire(_getCurrentId()));
 					iterate(itr);
 				} else if (dependency === 'module') {
 					args.push(m);
@@ -258,7 +266,7 @@ var define;
 			} else {
 				if (m.factory !== undefined) {
 					if (args.length < 1) {
-						var req = _createRequire();
+						var req = _createRequire(_getCurrentId());
 						args = args.concat(req, m.exports, m);
 					}
 					var ret = m.factory.apply(null, args);
@@ -285,7 +293,7 @@ var define;
 				cb(modules[pluginName+"!"+pluginModuleName].exports);
 				return;
 			}
-			var req = _createRequire();
+			var req = _createRequire(pluginName);
 			var load = function(pluginInstance){
 		    	modules[pluginName+"!"+pluginModuleName] = {};
 		    	modules[pluginName+"!"+pluginModuleName].exports = pluginInstance;
@@ -298,9 +306,21 @@ var define;
 		});
 	};
 	
-	function _createRequire() {
+	function _createRequire(id) {
 		var req = function(dependencies, callback) {
-			return require(dependencies, callback);
+			var root = modules[id];
+			var savedStack = moduleStack;
+			moduleStack = [root];
+			if (isFunction(callback)) {
+				require(dependencies, function() {
+					moduleStack = savedStack;
+					callback.apply(null, arguments);
+				});
+			} else {
+				var mod = require(dependencies, callback);
+				moduleStack = savedStack;
+				return mod;
+			}
 		};
 		req.toUrl = function(moduleResource) {
 			return _expand(moduleResource);
@@ -311,9 +331,12 @@ var define;
 		req.specified = function(moduleName) {
 			return _expand(moduleName) in modules;
 		};
-		req.path = _getCurrentId();
 		req.ready = require.ready;
         req.nameToUrl = require.nameToUrl;
+        req.cache = {};
+        req.toAbsMid = function(id) {
+        	return _expand(id);
+        };
 		return req;
 	};
 	
@@ -377,18 +400,18 @@ var define;
 	require = function (dependencies, callback) {
 		if (isString(dependencies)) {
 			var id = dependencies;
-			id = _expand(id, require.caller.path);
+			id = _expand(id);
 			if (id.match(".+!.+")) {
 				var pluginName = id.substring(0, id.indexOf('!'));
-				pluginName = _expand(pluginName, require.caller.path);
+				pluginName = _expand(pluginName);
 				var plugin = modules[pluginName].exports;
 				var pluginModuleName = id.substring(id.indexOf('!')+1);
 				if (plugin.normalize) {
 					pluginModuleName = plugin.normalize(pluginModuleName, function(path){
-						return _expand(path, require.caller.path);
+						return _expand(path);
 					});
 				} else {
-					pluginModuleName = _expand(pluginModuleName, require.caller.path);
+					pluginModuleName = _expand(pluginModuleName);
 				}
 				id = pluginName+"!"+pluginModuleName;
 			}
@@ -480,7 +503,7 @@ var define;
 			readyCallbacks.push(callback);
 		}
 	};
-    
+	
 	document.addEventListener("DOMContentLoaded", function() {
 		pageLoaded = true;
 		for (var i = 0; i < readyCallbacks.length; i++) {
