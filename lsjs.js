@@ -75,8 +75,8 @@ var define;
 	
 	function _expand(path, parent) {
 		if (path.search(/^\.\/|^\.\.\//) !== -1 ) {
-			if (parent) {
-				path = parent + path;
+			if (parent !== undefined) {
+				path = parent + "/../" + path;
 			} else {
 				path = _getCurrentId() + "/../" + path;
 			}
@@ -299,7 +299,6 @@ var define;
 	};
 	
 	function _createRequire() {
-		var path = _getCurrentId();
 		var req = function(dependencies, callback) {
 			return require(dependencies, callback);
 		};
@@ -312,7 +311,7 @@ var define;
 		req.specified = function(moduleName) {
 			return _expand(moduleName) in modules;
 		};
-		req.path = path.substring(0, path.lastIndexOf('/')+1);
+		req.path = _getCurrentId();
 		req.ready = require.ready;
         req.nameToUrl = require.nameToUrl;
 		return req;
