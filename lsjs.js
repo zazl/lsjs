@@ -333,9 +333,13 @@ var define;
 		};
 		req.ready = require.ready;
         req.nameToUrl = require.nameToUrl;
+        // Dojo specific require properties and functions
         req.cache = {};
         req.toAbsMid = function(id) {
         	return _expand(id);
+        };
+        req.isXdUrl = function(url) {
+        	return false;
         };
 		return req;
 	};
