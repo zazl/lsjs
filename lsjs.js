@@ -198,15 +198,16 @@ var define;
 	
 	function _inject(module, scriptSrc, cb) {
 		moduleStack.push(module);
-		/*
-		var script = document.createElement('script'); 
-		script.type = "text/javascript"; 
-		script.charset = "utf-8";
-		var scriptContent = document.createTextNode(scriptSrc);
-		script.appendChild(scriptContent);
-		document.getElementsByTagName("head")[0].appendChild(script);
-		*/
-        eval(scriptSrc+"//@ sourceURL="+module.id);
+		if (cfg.injectViaScriptTag) {
+			var script = document.createElement('script');
+			script.type = "text/javascript";
+			script.charset = "utf-8";
+			var scriptContent = document.createTextNode(scriptSrc);
+			script.appendChild(scriptContent);
+			document.getElementsByTagName("head")[0].appendChild(script);
+		} else {
+	        eval(scriptSrc+"//@ sourceURL="+module.id);
+		}
 		_loadModuleDependencies(module.id, function(exports){
 			moduleStack.pop();
             cb(exports);
