@@ -4,7 +4,7 @@
     see: http://dojotoolkit.org/license for details
 */
 
-var require; 
+var require;
 var define;
 
 (function () {
@@ -54,6 +54,11 @@ var define;
     	return moduleStack.length > 0 ? moduleStack[moduleStack.length-1].id : "";
     }
     
+    function _getCurrentAlias() {
+		var parentModule = moduleStack.length > 0 ? moduleStack[moduleStack.length-1] : undefined;
+    	return parentModule ? parentModule.alias : undefined;
+    }
+    
 	function _normalize(path) {
 		var segments = path.split('/');
 		var skip = 0;
@@ -81,15 +86,19 @@ var define;
             if (path.match("/$")) {
                 path = path.substring(0, path.length-1);
             }
-			path = _getCurrentId() + "/../" + path;
+    		var parentAlias = _getCurrentAlias();
+			if (parentAlias) {
+				path = parentAlias + "/../" + path;
+			} else {
+				path = _getCurrentId() + "/../" + path;
+			}
 			path = _normalize(path);
 		}
 		return path;
 	};
 	
 	function _idToUrl(path, module) {
-		var parentModule = moduleStack.length > 0 ? moduleStack[moduleStack.length-1] : undefined;
-		var parentAlias = parentModule ? parentModule.alias : undefined;
+		var parentAlias = _getCurrentAlias();
 		
 		if (path === "." || path === "..") {
 			path += "/";
@@ -312,12 +321,12 @@ var define;
 			var savedStack = moduleStack;
 			moduleStack = [root];
 			if (isFunction(callback)) {
-				require(dependencies, function() {
+				_require(dependencies, function() {
 					moduleStack = savedStack;
 					callback.apply(null, arguments);
 				});
 			} else {
-				var mod = require(dependencies, callback);
+				var mod = _require(dependencies, callback);
 				moduleStack = savedStack;
 				return mod;
 			}
@@ -331,8 +340,16 @@ var define;
 		req.specified = function(moduleName) {
 			return _expand(moduleName) in modules;
 		};
-		req.ready = require.ready;
-        req.nameToUrl = require.nameToUrl;
+		req.ready = function(callback) {
+			if (pageLoaded) {
+				callback();
+			} else {
+				readyCallbacks.push(callback);
+			}
+		};
+		req.nameToUrl = function(moduleName, ext, relModuleMap) {
+			return moduleName + ext;
+	    };
         // Dojo specific require properties and functions
         req.cache = {};
         req.toAbsMid = function(id) {
@@ -401,7 +418,7 @@ var define;
         plugins: true
     };
 
-	require = function (dependencies, callback) {
+	_require = function (dependencies, callback) {
 		if (isString(dependencies)) {
 			var id = dependencies;
 			id = _expand(id);
@@ -449,7 +466,7 @@ var define;
 	};
 	
 	modules["require"] = {};
-	modules["require"].exports = require;
+	modules["require"].exports = _require;
 	var cfg = {baseUrl: "./"};
 
 	lsjs = function(config, dependencies, callback) {
@@ -479,9 +496,9 @@ var define;
 		}
 		function callRequire(dependencies, callback) {
 			if (isFunction(callback)) {
-				require(dependencies, callback);
+				_require(dependencies, callback);
 			} else {
-				require(dependencies);
+				_require(dependencies);
 			}
 		};
 		if (cfg.timestampUrl) {
@@ -493,21 +510,9 @@ var define;
 		}
 	};
 	
-	require.nameToUrl = function(moduleName, ext, relModuleMap) {
-		return moduleName + ext;
-    };
-    
 	var pageLoaded = false;
 	var readyCallbacks = [];
     
-	require.ready = function(callback) {
-		if (pageLoaded) {
-			callback();
-		} else {
-			readyCallbacks.push(callback);
-		}
-	};
-	
 	document.addEventListener("DOMContentLoaded", function() {
 		pageLoaded = true;
 		for (var i = 0; i < readyCallbacks.length; i++) {
@@ -515,4 +520,7 @@ var define;
 		}
 	}, false);
 	
+	if (!require) {
+		require = _require;
+	}
 }());
