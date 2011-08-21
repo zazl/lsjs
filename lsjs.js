@@ -174,7 +174,7 @@ var define;
         }
     	url += ".js";
     	
-    	var key = window.location.pathname + url;
+    	var key = cfg.keyPrefix + url;
     	
 		if (cfg.forceLoad || url in reload) {
 			localStorage.removeItem(key);
@@ -368,10 +368,10 @@ var define;
 		var currentTimestamps = [];
 		for (var i=0; i < localStorage.length; i++) {
 			var key = localStorage.key(i);
-			if (key.match("^"+window.location.pathname)) {
+			if (key.match("^"+cfg.keyPrefix)) {
 				try {
 					var storedModule = JSON.parse(localStorage[key]);
-					currentTimestamps.push({url: key.substring(window.location.pathname.length), timestamp: storedModule.timestamp});
+					currentTimestamps.push({url: key.substring(cfg.keyPrefix.length), timestamp: storedModule.timestamp});
 				} catch (e) {
 					console.log("Failed to parse local storage value ["+localStorage[key]+"] : "+e);
 				}
@@ -468,7 +468,7 @@ var define;
 	
 	modules["require"] = {};
 	modules["require"].exports = _require;
-	var cfg = {baseUrl: "./"};
+	var cfg = {baseUrl: "./", keyPrefix: window.location.pathname};
 
 	lsjs = function(config, dependencies, callback) {
 		if (!isArray(config) && typeof config == "object") {
@@ -486,6 +486,7 @@ var define;
 				}
 			}
 			cfg.baseUrl = cfg.baseUrl || "./";
+			cfg.keyPrefix = cfg.keyPrefix || window.location.pathname;
 		} else {	
 			callback = dependencies;
 			dependencies = config;
