@@ -79,13 +79,8 @@ var define;
 	};
 	
 	function _expand(path) {
-		if (path == "." || path == "..") {
-			path += "/";
-		} 
-		if (path.search(/^\.\/|^\.\.\//) !== -1 ) {
-            if (path.match("/$")) {
-                path = path.substring(0, path.length-1);
-            }
+		var isRelative = path.search(/^\./) === -1 ? false : true;
+		if (isRelative) {
             var pkg;
             if ((pkg = pkgs[_getCurrentId()])) {
                 path = pkg.name + "/" + path;
@@ -100,13 +95,8 @@ var define;
 	function _idToUrl(path, module) {
 		var parentAlias = _getCurrentAlias();
 		
-		if (path === "." || path === "..") {
-			path += "/";
-		} 
-		if (path.search(/^\.\/|^\.\.\//) !== -1) {
-            if (path.match("/$")) {
-                path = path.substring(0, path.length-1);
-            }
+		var isRelative = path.search(/^\./) === -1 ? false : true;
+		if (isRelative) {
 			if (parentAlias) {
 				path = parentAlias + "/../" + path;
 			} else {
