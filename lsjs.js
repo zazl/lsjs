@@ -120,7 +120,7 @@ var define;
 		}
 		
 		var aliasFound = false;
-		segments = path.split("/");
+		var segments = path.split("/");
 		for (var i = segments.length; i >= 0; i--) {
 			var pkg;
             var parent = segments.slice(0, i).join("/");
