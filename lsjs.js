@@ -86,12 +86,12 @@ var define;
             if (path.match("/$")) {
                 path = path.substring(0, path.length-1);
             }
-    		var parentAlias = _getCurrentAlias();
-			if (parentAlias) {
-				path = parentAlias + "/../" + path;
-			} else {
-				path = _getCurrentId() + "/../" + path;
-			}
+            var pkg;
+            if ((pkg = pkgs[_getCurrentId()])) {
+                path = pkg.name + "/" + path;
+            } else {
+                path = _getCurrentId() + "/../" + path;
+            }
 			path = _normalize(path);
 		}
 		return path;
@@ -137,7 +137,7 @@ var define;
             }
 		}
 		path = segments.join("/");
-		if (aliasFound) {
+		if (module && aliasFound) {
 			module.alias = path;
 		}
 		return path;
@@ -333,7 +333,7 @@ var define;
 			}
 		};
 		req.toUrl = function(moduleResource) {
-			return _expand(moduleResource);
+			return _idToUrl(moduleResource);
 		};
 		req.defined = function(moduleName) {
 			return _expand(moduleName) in modules;
