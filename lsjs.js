@@ -92,29 +92,15 @@ var define;
 		return path;
 	};
 	
-	function _idToUrl(path, module) {
-		var parentAlias = _getCurrentAlias();
-		
-		var isRelative = path.search(/^\./) === -1 ? false : true;
-		if (isRelative) {
-			if (parentAlias) {
-				path = parentAlias + "/../" + path;
-			} else {
-				path = _getCurrentId() + "/../" + path;
-			}
-		}
-		
-		path = _normalize(path);
-		if (paths[path]) {
-			return paths[path];
-		}
-		
-		var aliasFound = false;
+	function _idToUrl(path) {
 		var segments = path.split("/");
 		for (var i = segments.length; i >= 0; i--) {
 			var pkg;
             var parent = segments.slice(0, i).join("/");
-            if ((pkg = pkgs[parent])) {
+            if (paths[parent]) {
+            	segments.splice(0, i, paths[parent]);
+                break;
+            }else if ((pkg = pkgs[parent])) {
             	aliasFound = true;
             	var pkgPath;
                 if (path === pkg.name) {
@@ -127,9 +113,6 @@ var define;
             }
 		}
 		path = segments.join("/");
-		if (module && aliasFound) {
-			module.alias = path;
-		}
 		return path;
 	};
 	
@@ -158,7 +141,7 @@ var define;
 		modules[expandedId] = {};
 		modules[expandedId].id = expandedId;
 		
-		var url = _idToUrl(id, modules[expandedId]);
+		var url = _idToUrl(expandedId);
         if (url.charAt(0) !== '/') {
         	url = cfg.baseUrl + url; 
         }
@@ -323,7 +306,7 @@ var define;
 			}
 		};
 		req.toUrl = function(moduleResource) {
-			return _idToUrl(moduleResource);
+			return _idToUrl(_expand(moduleResource));
 		};
 		req.defined = function(moduleName) {
 			return _expand(moduleName) in modules;
