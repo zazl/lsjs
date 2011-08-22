@@ -26,23 +26,44 @@ var define;
 		}
 	};
 
-	function supports_html5_storage() {
-		try {
-			return 'localStorage' in window && window['localStorage'] !== null;
-		} catch (e) {
-			return false;
+	lsImpl = {
+		isSupported: function() {
+			try {
+				return 'localStorage' in window && window['localStorage'] !== null;
+			} catch (e) {
+				return false;
+			}
+		},	
+		remove: function(key) {
+			localStorage.removeItem(key);
+		},
+		get: function(key) {
+			return JSON.parse(localStorage[key]);
+		},
+		set: function(key, entry) {
+			localStorage[key] = JSON.stringify(entry);
+		},
+		has: function(key) {
+			return localStorage[key] !== undefined && localStorage[key] !== null;
+		},
+		find: function(regex) {
+			var found = [];
+			for (var i=0; i < localStorage.length; i++) {
+				var key = localStorage.key(i);
+				if (key.match(regex)) {
+					found.push({key: key, value: localStorage[key]});
+				}
+			}
+			return found;
 		}
 	};
-	
-	if (!supports_html5_storage()) {
-		throw new Error("local storage is unvailable");
-	}
 	
 	var modules = {};
 	var moduleStack = [];
 	var paths = {};
 	var pkgs = {};
 	var reload = {};
+	var storage = lsImpl;
 	
 	var opts = Object.prototype.toString;
 	
@@ -144,18 +165,18 @@ var define;
     	var key = cfg.keyPrefix + url;
     	
 		if (cfg.forceLoad || url in reload) {
-			localStorage.removeItem(key);
+			storage.remove(key);
 		}
 		
-		if (localStorage[key] !== undefined && localStorage[key] !== null) {
-			var storedModule = JSON.parse(localStorage[key]);
+		if (storage.has(key)) {
+			var storedModule = storage.get(key);
 		}
 		
 		if (scriptText) {
 			_inject(modules[expandedId], scriptText, cb);
 		} else if (storedModule === undefined || storedModule === null) {
-			_getModule(url, function(scriptSrc, ts){
-				localStorage[key] = JSON.stringify({src: scriptSrc, timestamp: ts});
+			_getModule(url, function(scriptSrc, ts) {
+				storage.set(key, {src: scriptSrc, timestamp: ts});
 				_inject(modules[expandedId], scriptSrc, cb);
 			});
 		} else {
@@ -333,16 +354,10 @@ var define;
 		var xhr = new XMLHttpRequest();
 		xhr.open("POST", url, true);
 		var currentTimestamps = [];
-		for (var i=0; i < localStorage.length; i++) {
-			var key = localStorage.key(i);
-			if (key.match("^"+cfg.keyPrefix)) {
-				try {
-					var storedModule = JSON.parse(localStorage[key]);
-					currentTimestamps.push({url: key.substring(cfg.keyPrefix.length), timestamp: storedModule.timestamp});
-				} catch (e) {
-					console.log("Failed to parse local storage value ["+localStorage[key]+"] : "+e);
-				}
-			}
+		var items = storage.find("^"+cfg.keyPrefix);
+		for (var i = 0; i < items.length; i++) {
+			var storedModule = JSON.parse(items[i].value);
+			currentTimestamps.push({url: items[i].key.substring(cfg.keyPrefix.length), timestamp: storedModule.timestamp});
 		}
 		
 		xhr.onreadystatechange = function() {
@@ -452,13 +467,24 @@ var define;
 					pkgs[pkg.name] = pkg;
 				}
 			}
+			if (cfg.storageImpl) {
+				storage = cfg.storageImpl;
+				var requiredProps = ["get", "set", "has", "remove", "find", "isSupported"];
+				for (var i = 0; i < requiredProps.length; i++) {
+					if (!storage[requiredProps[i]]) {
+						throw new Error("Storage implementation must implement ["+requiredProps[i]+"]");
+					}
+				}
+			}
 			cfg.baseUrl = cfg.baseUrl || "./";
 			cfg.keyPrefix = cfg.keyPrefix || window.location.pathname;
 		} else {	
 			callback = dependencies;
 			dependencies = config;
 		}
-		
+		if (!storage.isSupported()) {
+			throw new Error("Storage implementation is unsupported");
+		}
 		if (!isArray(dependencies)) {
 			callback = dependencies;
 			dependencies = [];
