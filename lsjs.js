@@ -50,13 +50,8 @@ var define;
     function isArray(it) { return opts.call(it) === "[object Array]"; };
     function isString(it) { return (typeof it == "string" || it instanceof String); };
     
-    function _getCurrentId() {
+    function _getParentId() {
     	return moduleStack.length > 0 ? moduleStack[moduleStack.length-1].id : "";
-    }
-    
-    function _getCurrentAlias() {
-		var parentModule = moduleStack.length > 0 ? moduleStack[moduleStack.length-1] : undefined;
-    	return parentModule ? parentModule.alias : undefined;
     }
     
 	function _normalize(path) {
@@ -82,10 +77,10 @@ var define;
 		var isRelative = path.search(/^\./) === -1 ? false : true;
 		if (isRelative) {
             var pkg;
-            if ((pkg = pkgs[_getCurrentId()])) {
+            if ((pkg = pkgs[_getParentId()])) {
                 path = pkg.name + "/" + path;
             } else {
-                path = _getCurrentId() + "/../" + path;
+                path = _getParentId() + "/../" + path;
             }
 			path = _normalize(path);
 		}
@@ -101,7 +96,6 @@ var define;
             	segments.splice(0, i, paths[parent]);
                 break;
             }else if ((pkg = pkgs[parent])) {
-            	aliasFound = true;
             	var pkgPath;
                 if (path === pkg.name) {
                     pkgPath = pkg.location + '/' + pkg.main;
@@ -225,7 +219,7 @@ var define;
 						iterate(itr);
 					});
 				} else if (dependency === 'require') {
-					args.push(_createRequire(_getCurrentId()));
+					args.push(_createRequire(_getParentId()));
 					iterate(itr);
 				} else if (dependency === 'module') {
 					args.push(m);
@@ -249,7 +243,7 @@ var define;
 			} else {
 				if (m.factory !== undefined) {
 					if (args.length < 1) {
-						var req = _createRequire(_getCurrentId());
+						var req = _createRequire(_getParentId());
 						args = args.concat(req, m.exports, m);
 					}
 					var ret = m.factory.apply(null, args);
@@ -371,7 +365,7 @@ var define;
 		if (!isString(id)) {
 			factory = dependencies;
 			dependencies = id;
-			id = _getCurrentId();
+			id = _getParentId();
 		}
 		if (!isArray(dependencies)) {
 			factory = dependencies;
