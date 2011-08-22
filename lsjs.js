@@ -106,7 +106,7 @@ var define;
     			break;
             }
 		}
-		path = segments.join("/");
+		path = _normalize(segments.join("/"));
 		return path;
 	};
 	
