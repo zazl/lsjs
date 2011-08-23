@@ -5,7 +5,6 @@
         <display-name>LsJsServlet</display-name>
         <servlet-name>LsJsServlet</servlet-name>
         <servlet-class>org.dojotoolkit.lsjs.LsJsServlet</servlet-class>
-        <load-on-startup>2</load-on-startup>
     </servlet>
     <servlet-mapping>
         <servlet-name>LsJsServlet</servlet-name>
