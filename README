@@ -1,6 +1,0 @@
-lsjs
-----
-
-An AMD compliant loader that loads modules from localStorage.
-
-See https://github.com/zazl/lsjs/wiki/Getting-Started for more information.
