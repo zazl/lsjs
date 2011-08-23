@@ -41,7 +41,13 @@ var define;
 			return JSON.parse(localStorage[key]);
 		},
 		set: function(key, entry) {
-			localStorage[key] = JSON.stringify(entry);
+			try {
+				localStorage[key] = JSON.stringify(entry);
+				return true;
+			} catch (e) {
+				console.log("Failed to set value in local storage ["+key+"] : "+e);
+				return false;
+			}
 		},
 		has: function(key) {
 			return localStorage[key] !== undefined && localStorage[key] !== null;
@@ -51,7 +57,7 @@ var define;
 			for (var i=0; i < localStorage.length; i++) {
 				var key = localStorage.key(i);
 				if (key.match(regex)) {
-					found.push({key: key, value: localStorage[key]});
+					found.push({key: key, value: JSON.parse(localStorage[key])});
 				}
 			}
 			return found;
@@ -356,8 +362,7 @@ var define;
 		var currentTimestamps = [];
 		var items = storage.find("^"+cfg.keyPrefix);
 		for (var i = 0; i < items.length; i++) {
-			var storedModule = JSON.parse(items[i].value);
-			currentTimestamps.push({url: items[i].key.substring(cfg.keyPrefix.length), timestamp: storedModule.timestamp});
+			currentTimestamps.push({url: items[i].key.substring(cfg.keyPrefix.length), timestamp: items[i].value.timestamp});
 		}
 		
 		xhr.onreadystatechange = function() {
