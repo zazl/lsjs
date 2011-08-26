@@ -359,6 +359,7 @@ var define;
 	function _getTimestamps(url, cb) {
 		var xhr = new XMLHttpRequest();
 		xhr.open("POST", url, true);
+		xhr.setRequestHeader("Content-Type", "application/json");
 		var currentTimestamps = [];
 		var items = storage.find("^"+cfg.keyPrefix);
 		for (var i = 0; i < items.length; i++) {
