@@ -1,0 +1,4 @@
+{ 
+	"name" : "lsjsserver",
+	"main" : "./lib/lsjsserver.js" 
+}
