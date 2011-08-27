@@ -51,16 +51,6 @@ var define;
 		},
 		has: function(key) {
 			return localStorage[key] !== undefined && localStorage[key] !== null;
-		},
-		find: function(regex) {
-			var found = [];
-			for (var i=0; i < localStorage.length; i++) {
-				var key = localStorage.key(i);
-				if (key.match(regex)) {
-					found.push({key: key, value: JSON.parse(localStorage[key])});
-				}
-			}
-			return found;
 		}
 	};
 	
@@ -70,12 +60,18 @@ var define;
 	var pkgs = {};
 	var reload = {};
 	var storage = lsImpl;
+	var loaded = {};
 	
+	if (storage.has("loaded!"+window.location.pathname)) {
+		loaded = storage.get("loaded!"+window.location.pathname);
+	}
+
 	var opts = Object.prototype.toString;
 	
     function isFunction(it) { return opts.call(it) === "[object Function]"; };
     function isArray(it) { return opts.call(it) === "[object Array]"; };
     function isString(it) { return (typeof it == "string" || it instanceof String); };
+    function contains(a, obj) { var i = a.length; while (i--) { if (a[i] === obj) { return true; }} return false; };
     
     function _getParentId() {
     	return moduleStack.length > 0 ? moduleStack[moduleStack.length-1].id : "";
@@ -182,6 +178,8 @@ var define;
 			_inject(modules[expandedId], scriptText, cb);
 		} else if (storedModule === undefined || storedModule === null) {
 			_getModule(url, function(scriptSrc, ts) {
+				var entry = {url: url, timestamp: ts};
+				loaded[url] = ts;
 				storage.set(key, {src: scriptSrc, timestamp: ts});
 				_inject(modules[expandedId], scriptSrc, cb);
 			});
@@ -360,11 +358,6 @@ var define;
 		var xhr = new XMLHttpRequest();
 		xhr.open("POST", url, true);
 		xhr.setRequestHeader("Content-Type", "application/json");
-		var currentTimestamps = [];
-		var items = storage.find("^"+cfg.keyPrefix);
-		for (var i = 0; i < items.length; i++) {
-			currentTimestamps.push({url: items[i].key.substring(cfg.keyPrefix.length), timestamp: items[i].value.timestamp});
-		}
 		
 		xhr.onreadystatechange = function() {
 			if (xhr.readyState == 4) {
@@ -379,7 +372,11 @@ var define;
 				}
 			}
 		};
-		xhr.send(JSON.stringify(currentTimestamps));				
+		var current = [];
+		for (var url in loaded) {
+			current.push({url: url, timestamp: loaded[url]});
+		}
+		xhr.send(JSON.stringify(current));
 	};
 
 	define = function (id, dependencies, factory) {
@@ -475,7 +472,7 @@ var define;
 			}
 			if (cfg.storageImpl) {
 				storage = cfg.storageImpl;
-				var requiredProps = ["get", "set", "has", "remove", "find", "isSupported"];
+				var requiredProps = ["get", "set", "has", "remove", "isSupported"];
 				for (var i = 0; i < requiredProps.length; i++) {
 					if (!storage[requiredProps[i]]) {
 						throw new Error("Storage implementation must implement ["+requiredProps[i]+"]");
@@ -497,9 +494,13 @@ var define;
 		}
 		function callRequire(dependencies, callback) {
 			if (isFunction(callback)) {
-				_require(dependencies, callback);
+				_require(dependencies, function() {
+					callback.apply(null, arguments);
+					storage.set("loaded!"+window.location.pathname, loaded);
+				});
 			} else {
 				_require(dependencies);
+				storage.set("loaded!"+window.location.pathname, loaded);
 			}
 		};
 		if (cfg.timestampUrl) {
