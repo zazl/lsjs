@@ -10,7 +10,8 @@ var define;
 (function () {
 	/* These regexs are taken from requirejs */
     var commentRegExp = /(\/\*([\s\S]*?)\*\/|\/\/(.*)$)/mg;
-    var cjsRequireRegExp = /\S*require\(["']([^'"\s]+)["']\)/g;
+	/* Based on the cjs regexs in requirejs, modified slightly */
+    var cjsRequireRegExp = /[^\d\w\.]require\(["']([^'"\s]+)["']\)/g;
     
 	Iterator = function(array) {
 		this.array = array;
