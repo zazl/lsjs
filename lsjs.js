@@ -292,7 +292,8 @@ var define;
 			} else {
 				pluginModuleName = _expand(pluginModuleName);
 			}
-			if (modules[pluginName+"!"+pluginModuleName] !== undefined) {
+			var isDynamic = plugin.dynamic || false; 
+			if (modules[pluginName+"!"+pluginModuleName] !== undefined && !isDynamic) {
 				cb(modules[pluginName+"!"+pluginModuleName].exports);
 				return;
 			}
