@@ -62,6 +62,7 @@ var define;
 	var reload = {};
 	var storage = lsImpl;
 	var loaded = {};
+	var geval = window.execScript || eval;
 	
 	if (storage.has("loaded!"+window.location.pathname)) {
 		loaded = storage.get("loaded!"+window.location.pathname);
@@ -198,7 +199,7 @@ var define;
 			script.appendChild(scriptContent);
 			document.getElementsByTagName("head")[0].appendChild(script);
 		} else {
-	        eval(scriptSrc+"//@ sourceURL="+module.id);
+			geval(scriptSrc+"//@ sourceURL="+module.id);
 		}
 		_loadModuleDependencies(module.id, function(exports){
 			moduleStack.pop();
