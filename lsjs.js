@@ -62,10 +62,21 @@ var define;
 	var reload = {};
 	var storage = lsImpl;
 	var loaded = {};
+	var cache = {};
+	var cachets = {};
+	var usesCache = {};
+
 	var geval = window.execScript || eval;
 	
 	if (storage.has("loaded!"+window.location.pathname)) {
 		loaded = storage.get("loaded!"+window.location.pathname);
+	}
+	if (storage.has("cache!"+window.location.pathname)) {
+		var storedcache = storage.get("cache!"+window.location.pathname);
+		for (var url in storedcache) {
+			cache[url] = storedcache[url].value;
+			cachets[url] = storedcache[url].timestamp;
+		}
 	}
 
 	var opts = Object.prototype.toString;
@@ -301,6 +312,18 @@ var define;
 			var load = function(pluginInstance){
 		    	modules[pluginName+"!"+pluginModuleName] = {};
 		    	modules[pluginName+"!"+pluginModuleName].exports = pluginInstance;
+		    	if (!isDynamic && pluginName in usesCache) {
+		    		var url = _idToUrl(pluginModuleName);
+		    		if (cache[url] === undefined || url in reload) {
+		    			_getLastModified(url, function(lastModified){
+		    				console.log("url ["+url+"] last modified ["+lastModified+"]");
+		    				if (lastModified) {
+			    				cachets[url] = lastModified;
+		    				}
+		    			});
+		    			cache[url] = pluginInstance;
+		    		}
+		    	}
 				cb(pluginInstance);
 			};
 			load.fromText = function(name, text) {
@@ -346,7 +369,7 @@ var define;
 			return moduleName + ext;
 	    };
         // Dojo specific require properties and functions
-        req.cache = {};
+        req.cache = cache;
         req.toAbsMid = function(id) {
         	return _expand(id);
         };
@@ -356,9 +379,9 @@ var define;
 		return req;
 	};
 	
-	function _getTimestamps(url, cb) {
+	function _getTimestamps(timestampUrl, cb) {
 		var xhr = new XMLHttpRequest();
-		xhr.open("POST", url, true);
+		xhr.open("POST", timestampUrl, true);
 		xhr.setRequestHeader("Content-Type", "application/json");
 		
 		xhr.onreadystatechange = function() {
@@ -370,15 +393,34 @@ var define;
 					}
 					cb();
 				} else {
-					throw new Error("Unable to get timestamps via the url ["+url+"]:"+xhr.status);
+					throw new Error("Unable to get timestamps via the url ["+timestampUrl+"]:"+xhr.status);
 				}
 			}
 		};
 		var current = [];
-		for (var url in loaded) {
+		var url;
+		for (url in loaded) {
 			current.push({url: url, timestamp: loaded[url]});
 		}
+		for (url in cachets) {
+			current.push({url: url, timestamp: cachets[url]});
+		}
 		xhr.send(JSON.stringify(current));
+	};
+
+	function _getLastModified(url, cb) {
+		var xhr = new XMLHttpRequest();
+		xhr.open("HEAD", url, true);
+		xhr.onreadystatechange = function() {
+			if (xhr.readyState == 4) {
+				if (xhr.status == 200) {
+					cb(xhr.getResponseHeader("Last-Modified"));
+				} else {
+					cb();
+				}
+			}
+		};
+		xhr.send(null);
 	};
 
 	define = function (id, dependencies, factory) {
@@ -459,6 +501,7 @@ var define;
 
 	lsjs = function(config, dependencies, callback) {
 		if (!isArray(config) && typeof config == "object") {
+			var i;
 			cfg = config;
 			if (cfg.paths) {
 				for (var p in cfg.paths) {
@@ -467,7 +510,7 @@ var define;
 				}
 			}
 			if (cfg.packages) {
-				for (var i = 0; i < cfg.packages.length; i++) {
+				for (i = 0; i < cfg.packages.length; i++) {
 					var pkg = cfg.packages[i];
 					pkgs[pkg.name] = pkg;
 				}
@@ -475,10 +518,15 @@ var define;
 			if (cfg.storageImpl) {
 				storage = cfg.storageImpl;
 				var requiredProps = ["get", "set", "has", "remove", "isSupported"];
-				for (var i = 0; i < requiredProps.length; i++) {
+				for (i = 0; i < requiredProps.length; i++) {
 					if (!storage[requiredProps[i]]) {
 						throw new Error("Storage implementation must implement ["+requiredProps[i]+"]");
 					}
+				}
+			}
+			if (cfg.usesCache) {
+				for (i = 0; i < cfg.usesCache.length; i++) {
+					usesCache[cfg.usesCache[i]] = true;
 				}
 			}
 			cfg.baseUrl = cfg.baseUrl || "./";
@@ -498,11 +546,9 @@ var define;
 			if (isFunction(callback)) {
 				_require(dependencies, function() {
 					callback.apply(null, arguments);
-					storage.set("loaded!"+window.location.pathname, loaded);
 				});
 			} else {
 				_require(dependencies);
-				storage.set("loaded!"+window.location.pathname, loaded);
 			}
 		};
 		if (cfg.timestampUrl) {
@@ -522,6 +568,15 @@ var define;
 		for (var i = 0; i < readyCallbacks.length; i++) {
 			readyCallbacks[i]();
 		}
+	}, false);
+
+	window.addEventListener("beforeunload", function() {
+		storage.set("loaded!"+window.location.pathname, loaded);
+		var storedCache = {};
+		for (var url in cache) {
+			storedCache[url] = {value: cache[url], timestamp: cachets[url]};
+		}
+		storage.set("cache!"+window.location.pathname, storedCache);
 	}, false);
 	
 	if (!require) {
