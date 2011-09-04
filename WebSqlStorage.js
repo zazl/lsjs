@@ -7,12 +7,9 @@
 var WebSqlStorage;
 
 (function () {
-	WebSqlStorage = function(namespace, dbSize) {
-		this.namespace = namespace;
-		this.namespace.webdb = {};
-		this.namespace.webdb.db = null;
-		this.namespace.webdb.db = openDatabase('lsjs db', '1.0', 'lsjs database', dbSize);
-		this.namespace.webdb.db.transaction(function(tx) {
+	WebSqlStorage = function(dbSize) {
+		this.db = openDatabase('lsjs db', '1.0', 'lsjs database', dbSize * 1024 * 1024);
+		this.db.transaction(function(tx) {
 		    tx.executeSql('CREATE TABLE IF NOT EXISTS lsjs(id TEXT PRIMARY KEY ASC, entry TEXT)');
 		});
 	};
@@ -22,7 +19,7 @@ var WebSqlStorage;
 			return !!window.openDatabase;
 		},	
 		remove: function(key, handler, errorHandler) {
-			this.namespace.webdb.db.transaction(function(tx) {
+			this.db.transaction(function(tx) {
 			    tx.executeSql('DELETE FROM lsjs WHERE id=?', [key], function(tx){
 					if (handler) {
 						handler();
@@ -37,7 +34,7 @@ var WebSqlStorage;
 			});
 		},
 		get: function(key, handler, errorHandler) {
-			this.namespace.webdb.db.transaction(function(tx) {
+			this.db.transaction(function(tx) {
 			    tx.executeSql('SELECT entry FROM lsjs WHERE id=?', [key], function(tx, results){
 			    	if (results.rows.length > 0) {
 			    		var value = JSON.parse(results.rows.item(0).entry);
@@ -62,7 +59,7 @@ var WebSqlStorage;
 			var entryValue = JSON.stringify(entry);
 			var scope = this;
 			this.get(key, function(){
-				scope.namespace.webdb.db.transaction(function(tx) {
+				scope.db.transaction(function(tx) {
 				    tx.executeSql('UPDATE lsjs set entry=? where id=?', [entryValue, key], function(tx){
 						if (handler) {
 							handler(true);
@@ -76,7 +73,7 @@ var WebSqlStorage;
 				    });
 				});
 			}, function(){
-				scope.namespace.webdb.db.transaction(function(tx) {
+				scope.db.transaction(function(tx) {
 				    tx.executeSql('INSERT into lsjs (id, entry) VALUES (?, ?)', [key, entryValue], function(tx){
 						if (handler) {
 							handler(true);
