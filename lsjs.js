@@ -35,23 +35,46 @@ var define;
 				return false;
 			}
 		},	
-		remove: function(key) {
-			localStorage.removeItem(key);
-		},
-		get: function(key) {
-			return JSON.parse(localStorage[key]);
-		},
-		set: function(key, entry) {
+		remove: function(key, handler, errorHandler) {
 			try {
-				localStorage[key] = JSON.stringify(entry);
-				return true;
-			} catch (e) {
-				console.log("Failed to set value in local storage ["+key+"] : "+e);
-				return false;
+				var value = JSON.parse(localStorage[key]);
+				localStorage.removeItem(key);
+				if (handler) {
+					handler(value);
+				}
+			} catch(e) {
+				if (errorHandler) {
+					errorHandler(e);
+				} else {
+					console.log("Failed to remove value in local storage ["+key+"] : "+e);
+				}
 			}
 		},
-		has: function(key) {
-			return localStorage[key] !== undefined && localStorage[key] !== null;
+		get: function(key, handler, errorHandler) {
+			try {
+				var value = JSON.parse(localStorage[key]);
+				handler(value);
+			} catch(e) {
+				if (errorHandler) {
+					errorHandler(e);
+				} else {
+					console.log("Failed to get value in local storage ["+key+"] : "+e);
+				}
+			}
+		},
+		set: function(key, entry, handler, errorHandler) {
+			try {
+				localStorage[key] = JSON.stringify(entry);
+				if (handler) {
+					handler(true);
+				}
+			} catch (e) {
+				if (errorHandler) {
+					errorHandler(e);
+				} else {
+					console.log("Failed to set value in local storage ["+key+"] : "+e);
+				}
+			}
 		}
 	};
 	
@@ -68,17 +91,6 @@ var define;
 
 	var geval = window.execScript || eval;
 	
-	if (storage.has("loaded!"+window.location.pathname)) {
-		loaded = storage.get("loaded!"+window.location.pathname);
-	}
-	if (storage.has("cache!"+window.location.pathname)) {
-		var storedcache = storage.get("cache!"+window.location.pathname);
-		for (var url in storedcache) {
-			cache[url] = storedcache[url].value;
-			cachets[url] = storedcache[url].timestamp;
-		}
-	}
-
 	var opts = Object.prototype.toString;
 	
     function isFunction(it) { return opts.call(it) === "[object Function]"; };
@@ -178,25 +190,33 @@ var define;
     	
     	var key = cfg.keyPrefix + url;
     	
+		var storedModule;
+    	function _load() {
+			if (scriptText) {
+				_inject(modules[expandedId], scriptText, cb);
+			} else if (storedModule === undefined || storedModule === null) {
+				_getModule(url, function(scriptSrc, ts) {
+					var entry = {url: url, timestamp: ts};
+					loaded[url] = ts;
+					storage.set("loaded!"+window.location.pathname, loaded);
+					storage.set(key, {src: scriptSrc, timestamp: ts});
+					_inject(modules[expandedId], scriptSrc, cb);
+				});
+			} else {
+				_inject(modules[expandedId], storedModule.src, cb);
+			}
+    	};
 		if (cfg.forceLoad || url in reload) {
-			storage.remove(key);
-		}
-		
-		if (storage.has(key)) {
-			var storedModule = storage.get(key);
-		}
-		
-		if (scriptText) {
-			_inject(modules[expandedId], scriptText, cb);
-		} else if (storedModule === undefined || storedModule === null) {
-			_getModule(url, function(scriptSrc, ts) {
-				var entry = {url: url, timestamp: ts};
-				loaded[url] = ts;
-				storage.set(key, {src: scriptSrc, timestamp: ts});
-				_inject(modules[expandedId], scriptSrc, cb);
+			storage.remove(key, function(){
+				_load();
 			});
 		} else {
-			_inject(modules[expandedId], storedModule.src, cb);
+			storage.get(key, function(value) {
+				storedModule = value;
+				_load();
+			}, function(error){
+				_load();
+			});
 		}
 	};
 	
@@ -316,12 +336,13 @@ var define;
 		    		var url = _idToUrl(pluginModuleName);
 		    		if (cache[url] === undefined || url in reload) {
 		    			_getLastModified(url, function(lastModified){
-		    				console.log("url ["+url+"] last modified ["+lastModified+"]");
 		    				if (lastModified) {
 			    				cachets[url] = lastModified;
+				    			_storeCache();
 		    				}
 		    			});
 		    			cache[url] = pluginInstance;
+		    			_storeCache();
 		    		}
 		    	}
 				cb(pluginInstance);
@@ -423,6 +444,14 @@ var define;
 		xhr.send(null);
 	};
 
+	function _storeCache() {
+		var storedCache = {};
+		for (var url in cache) {
+			storedCache[url] = {value: cache[url], timestamp: cachets[url]};
+		}
+		storage.set("cache!"+window.location.pathname, storedCache);
+	};
+
 	define = function (id, dependencies, factory) {
 		if (!isString(id)) {
 			factory = dependencies;
@@ -517,7 +546,7 @@ var define;
 			}
 			if (cfg.storageImpl) {
 				storage = cfg.storageImpl;
-				var requiredProps = ["get", "set", "has", "remove", "isSupported"];
+				var requiredProps = ["get", "set", "remove", "isSupported"];
 				for (i = 0; i < requiredProps.length; i++) {
 					if (!storage[requiredProps[i]]) {
 						throw new Error("Storage implementation must implement ["+requiredProps[i]+"]");
@@ -538,6 +567,18 @@ var define;
 		if (!storage.isSupported()) {
 			throw new Error("Storage implementation is unsupported");
 		}
+
+		storage.get("loaded!"+window.location.pathname, function(value){
+			loaded = value;
+		}, function(error){});
+
+		storage.get("cache!"+window.location.pathname, function(storedcache) {
+			for (var url in storedcache) {
+				cache[url] = storedcache[url].value;
+				cachets[url] = storedcache[url].timestamp;
+			}
+		}, function(error){});
+
 		if (!isArray(dependencies)) {
 			callback = dependencies;
 			dependencies = [];
@@ -568,15 +609,6 @@ var define;
 		for (var i = 0; i < readyCallbacks.length; i++) {
 			readyCallbacks[i]();
 		}
-	}, false);
-
-	window.addEventListener("beforeunload", function() {
-		storage.set("loaded!"+window.location.pathname, loaded);
-		var storedCache = {};
-		for (var url in cache) {
-			storedCache[url] = {value: cache[url], timestamp: cachets[url]};
-		}
-		storage.set("cache!"+window.location.pathname, storedCache);
 	}, false);
 	
 	if (!require) {
