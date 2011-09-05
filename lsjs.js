@@ -53,7 +53,15 @@ var define;
 		get: function(key, handler, errorHandler) {
 			try {
 				var value = JSON.parse(localStorage[key]);
-				handler(value);
+				if (value === undefined || value === null) {
+					if (errorHandler) {
+						errorHandler("Failed to get value in local storage ["+key+"]");
+					} else {
+						console.log("Failed to get value in local storage ["+key+"]");
+					}
+				} else {
+					handler(value);
+				}
 			} catch(e) {
 				if (errorHandler) {
 					errorHandler(e);
