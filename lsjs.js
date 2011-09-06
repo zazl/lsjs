@@ -412,13 +412,15 @@ var define;
 		var xhr = new XMLHttpRequest();
 		xhr.open("POST", timestampUrl, true);
 		xhr.setRequestHeader("Content-Type", "application/json");
-		
+		var prefix = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+
 		xhr.onreadystatechange = function() {
 			if (xhr.readyState == 4) {
 				if (xhr.status == 200) {
 					var urlsToReload = JSON.parse(xhr.responseText);
 					for (var i = 0; i < urlsToReload.length; i++) {
-						reload[urlsToReload[i]] = urlsToReload[i];
+						urlToReload = urlsToReload[i].substring(prefix.length+1);
+						reload[urlToReload] = urlToReload;
 					}
 					cb();
 				} else {
@@ -428,11 +430,12 @@ var define;
 		};
 		var current = [];
 		var url;
+
 		for (url in loaded) {
-			current.push({url: url, timestamp: loaded[url]});
+			current.push({url: prefix+'/'+url, timestamp: loaded[url]});
 		}
 		for (url in cachets) {
-			current.push({url: url, timestamp: cachets[url]});
+			current.push({url: prefix+'/'+url, timestamp: cachets[url]});
 		}
 		xhr.send(JSON.stringify(current));
 	};

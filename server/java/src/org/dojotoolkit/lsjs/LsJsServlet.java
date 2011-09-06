@@ -45,7 +45,7 @@ public class LsJsServlet extends HttpServlet {
 				synchronized(format) {
 					d = format.parse(ts);
 				}
-				String path = getServletContext().getRealPath(url);
+				String path = getServletContext().getRealPath(url.substring(request.getContextPath().length()));
 				File f = new File(path);
 				if (d.getTime() != f.lastModified()) {
 					logger.logp(Level.INFO, getClass().getName(), "service", "url ["+url+"] timstamp is different ["+d.getTime()+"] vs ["+f.lastModified()+"]");
