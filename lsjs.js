@@ -161,7 +161,11 @@ var define;
     			break;
             }
 		}
-		path = _normalize(segments.join("/"));
+		path = segments.join("/");
+        if (path.charAt(0) !== '/') {
+        	path = cfg.baseUrl + path; 
+        }
+		path = _normalize(path);
 		return path;
 	};
 	
@@ -191,23 +195,18 @@ var define;
 		modules[expandedId].id = expandedId;
 		
 		var url = _idToUrl(expandedId);
-        if (url.charAt(0) !== '/') {
-        	url = cfg.baseUrl + url; 
-        }
     	url += ".js";
-    	
-    	var key = cfg.keyPrefix + url;
     	
 		var storedModule;
     	function _load() {
 			if (scriptText) {
 				_inject(modules[expandedId], scriptText, cb);
 			} else if (storedModule === undefined || storedModule === null) {
-				_getModule(url, function(scriptSrc, ts) {
-					var entry = {url: url, timestamp: ts};
-					loaded[url] = ts;
+				_getModule(url, function(_url, scriptSrc, ts) {
+					var entry = {url: _url, timestamp: ts};
+					loaded[_url] = ts;
 					storage.set("loaded!"+window.location.pathname, loaded);
-					storage.set(key, {src: scriptSrc, timestamp: ts});
+					storage.set(_url, {src: scriptSrc, timestamp: ts});
 					_inject(modules[expandedId], scriptSrc, cb);
 				});
 			} else {
@@ -215,11 +214,11 @@ var define;
 			}
     	};
 		if (cfg.forceLoad || url in reload) {
-			storage.remove(key, function(){
+			storage.remove(url, function(){
 				_load();
 			});
 		} else {
-			storage.get(key, function(value) {
+			storage.get(url, function(value) {
 				storedModule = value;
 				_load();
 			}, function(error){
@@ -252,7 +251,7 @@ var define;
 		xhr.onreadystatechange = function() {
 			if (xhr.readyState == 4) {
 				if (xhr.status == 200) {
-					cb(xhr.responseText, xhr.getResponseHeader("Last-Modified"));
+					cb(url, xhr.responseText, xhr.getResponseHeader("Last-Modified"));
 				} else {
 					throw new Error("Unable to load ["+url+"]:"+xhr.status);
 				}
@@ -379,7 +378,8 @@ var define;
 			}
 		};
 		req.toUrl = function(moduleResource) {
-			return _idToUrl(_expand(moduleResource));
+			var url = _idToUrl(_expand(moduleResource)); 
+			return url;
 		};
 		req.defined = function(moduleName) {
 			return _expand(moduleName) in modules;
@@ -412,15 +412,13 @@ var define;
 		var xhr = new XMLHttpRequest();
 		xhr.open("POST", timestampUrl, true);
 		xhr.setRequestHeader("Content-Type", "application/json");
-		var prefix = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
 
 		xhr.onreadystatechange = function() {
 			if (xhr.readyState == 4) {
 				if (xhr.status == 200) {
 					var urlsToReload = JSON.parse(xhr.responseText);
 					for (var i = 0; i < urlsToReload.length; i++) {
-						urlToReload = urlsToReload[i].substring(prefix.length+1);
-						reload[urlToReload] = urlToReload;
+						reload[urlsToReload[i]] = urlsToReload[i];
 					}
 					cb();
 				} else {
@@ -432,10 +430,10 @@ var define;
 		var url;
 
 		for (url in loaded) {
-			current.push({url: prefix+'/'+url, timestamp: loaded[url]});
+			current.push({url: url, timestamp: loaded[url]});
 		}
 		for (url in cachets) {
-			current.push({url: prefix+'/'+url, timestamp: cachets[url]});
+			current.push({url: url, timestamp: cachets[url]});
 		}
 		xhr.send(JSON.stringify(current));
 	};
@@ -537,7 +535,7 @@ var define;
 	
 	modules["require"] = {};
 	modules["require"].exports = _require;
-	var cfg = {baseUrl: "./", keyPrefix: window.location.pathname};
+	var cfg = {baseUrl: "./"};
 
 	lsjs = function(config, dependencies, callback) {
 		if (!isArray(config) && typeof config == "object") {
@@ -570,10 +568,12 @@ var define;
 				}
 			}
 			cfg.baseUrl = cfg.baseUrl || "./";
-			cfg.keyPrefix = cfg.keyPrefix || window.location.pathname;
 		} else {	
 			callback = dependencies;
 			dependencies = config;
+		}
+		if (cfg.baseUrl.charAt(0) !== '/') {
+			cfg.baseUrl = _normalize(window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/')) + '/'+ cfg.baseUrl);
 		}
 		if (!storage.isSupported()) {
 			throw new Error("Storage implementation is unsupported");
