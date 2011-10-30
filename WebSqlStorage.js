@@ -15,6 +15,11 @@ var WebSqlStorage;
 	};
 	
 	WebSqlStorage.prototype = {
+		clear: function() {
+			this.db.transaction(function(tx) {
+			    tx.executeSql('DROP TABLE IF EXISTS lsjs');
+			});
+		},
 		isSupported: function() {
 			return !!window.openDatabase;
 		},	
