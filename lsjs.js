@@ -493,7 +493,8 @@ var define;
 	};
 	
     define.amd = {
-        plugins: true
+        plugins: true,
+        jQuery: true
     };
 
 	_require = function (dependencies, callback) {
