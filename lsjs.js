@@ -1,7 +1,7 @@
 /*
-    Copyright (c) 2004-2011, The Dojo Foundation All Rights Reserved.
-    Available via Academic Free License >= 2.1 OR the modified BSD license.
-    see: http://dojotoolkit.org/license for details
+	Copyright (c) 2004-2011, The Dojo Foundation All Rights Reserved.
+	Available via Academic Free License >= 2.1 OR the modified BSD license.
+	see: http://dojotoolkit.org/license for details
 */
 
 var require;
@@ -9,10 +9,10 @@ var define;
 
 (function () {
 	/* These regexs are taken from requirejs */
-    var commentRegExp = /(\/\*([\s\S]*?)\*\/|\/\/(.*)$)/mg;
+	var commentRegExp = /(\/\*([\s\S]*?)\*\/|\/\/(.*)$)/mg;
 	/* Based on the cjs regexs in requirejs, modified slightly */
-    var cjsRequireRegExp = /[^\d\w\.]require\(["']([^'"\s]+)["']\)/g;
-    
+	var cjsRequireRegExp = /[^\d\w\.]require\(["']([^'"\s]+)["']\)/g;
+
 	Iterator = function(array) {
 		this.array = array;
 		this.current = 0;
@@ -34,7 +34,7 @@ var define;
 			} catch (e) {
 				return false;
 			}
-		},	
+		},
 		remove: function(key, handler, errorHandler) {
 			try {
 				var json = localStorage[key];
@@ -95,7 +95,7 @@ var define;
 			}
 		}
 	};
-	
+
 	var modules = {};
 	var moduleStack = [];
 	var paths = {};
@@ -108,17 +108,17 @@ var define;
 	var usesCache = {};
 
 	var geval = window.execScript || eval;
-	
+
 	var opts = Object.prototype.toString;
-	
-    function isFunction(it) { return opts.call(it) === "[object Function]"; };
-    function isArray(it) { return opts.call(it) === "[object Array]"; };
-    function isString(it) { return (typeof it == "string" || it instanceof String); };
-    
-    function _getParentId() {
-    	return moduleStack.length > 0 ? moduleStack[moduleStack.length-1].id : "";
-    }
-    
+
+	function isFunction(it) { return opts.call(it) === "[object Function]"; };
+	function isArray(it) { return opts.call(it) === "[object Array]"; };
+	function isString(it) { return (typeof it == "string" || it instanceof String); };
+
+	function _getParentId() {
+		return moduleStack.length > 0 ? moduleStack[moduleStack.length-1].id : "";
+	}
+
 	function _normalize(path) {
 		var segments = path.split('/');
 		var skip = 0;
@@ -137,48 +137,48 @@ var define;
 		}
 		return segments.join('/');
 	};
-	
+
 	function _expand(path) {
 		var isRelative = path.search(/^\./) === -1 ? false : true;
 		if (isRelative) {
-            var pkg;
-            if ((pkg = pkgs[_getParentId()])) {
-                path = pkg.name + "/" + path;
-            } else {
-                path = _getParentId() + "/../" + path;
-            }
+			var pkg;
+			if ((pkg = pkgs[_getParentId()])) {
+				path = pkg.name + "/" + path;
+			} else {
+				path = _getParentId() + "/../" + path;
+			}
 			path = _normalize(path);
 		}
 		return path;
 	};
-	
+
 	function _idToUrl(path) {
 		var segments = path.split("/");
 		for (var i = segments.length; i >= 0; i--) {
 			var pkg;
-            var parent = segments.slice(0, i).join("/");
-            if (paths[parent]) {
-            	segments.splice(0, i, paths[parent]);
-                break;
-            }else if ((pkg = pkgs[parent])) {
-            	var pkgPath;
-                if (path === pkg.name) {
-                    pkgPath = pkg.location + '/' + pkg.main;
-                } else {
-                    pkgPath = pkg.location;
-                }
-    			segments.splice(0, i, pkgPath);
-    			break;
-            }
+			var parent = segments.slice(0, i).join("/");
+			if (paths[parent]) {
+				segments.splice(0, i, paths[parent]);
+				break;
+			}else if ((pkg = pkgs[parent])) {
+				var pkgPath;
+				if (path === pkg.name) {
+					pkgPath = pkg.location + '/' + pkg.main;
+				} else {
+					pkgPath = pkg.location;
+				}
+				segments.splice(0, i, pkgPath);
+				break;
+			}
 		}
 		path = segments.join("/");
-        if (path.charAt(0) !== '/') {
-        	path = cfg.baseUrl + path; 
-        }
+		if (path.charAt(0) !== '/') {
+			path = cfg.baseUrl + path;
+		}
 		path = _normalize(path);
 		return path;
 	};
-	
+
 	function _loadModule(id, cb, scriptText) {
 		var expandedId = _expand(id);
 		if (modules[expandedId] !== undefined) {
@@ -203,12 +203,12 @@ var define;
 		}
 		modules[expandedId] = {};
 		modules[expandedId].id = expandedId;
-		
+
 		var url = _idToUrl(expandedId);
-    	url += ".js";
-    	
+		url += ".js";
+
 		var storedModule;
-    	function _load() {
+		function _load() {
 			if (scriptText) {
 				_inject(modules[expandedId], scriptText, cb);
 			} else if (storedModule === undefined || storedModule === null) {
@@ -222,7 +222,7 @@ var define;
 			} else {
 				_inject(modules[expandedId], storedModule.src, cb);
 			}
-    	};
+		};
 		if (cfg.forceLoad || url in reload) {
 			storage.remove(url, function(){
 				_load();
@@ -236,7 +236,7 @@ var define;
 			});
 		}
 	};
-	
+
 	function _inject(module, scriptSrc, cb) {
 		moduleStack.push(module);
 		if (cfg.injectViaScriptTag) {
@@ -251,10 +251,10 @@ var define;
 		}
 		_loadModuleDependencies(module.id, function(exports){
 			moduleStack.pop();
-            cb(exports);
-        });
+			cb(exports);
+		});
 	};
-	
+
 	function _getModule(url, cb) {
 		var xhr = new XMLHttpRequest();
 		xhr.open("GET", url+"?nocache="+new Date().valueOf(), true);
@@ -267,9 +267,9 @@ var define;
 				}
 			}
 		};
-		xhr.send(null);				
+		xhr.send(null);
 	};
-	
+
 	function _loadModuleDependencies(id, cb) {
 		var args = [];
 		var m = modules[id];
@@ -332,7 +332,7 @@ var define;
 		};
 		iterate(new Iterator(m.dependencies));
 	};
-	
+
 	function _loadPlugin(pluginName, pluginModuleName, cb) {
 		_loadModule(pluginName, function(plugin){
 			if (plugin.normalize) {
@@ -347,30 +347,30 @@ var define;
 			}
 			var req = _createRequire(pluginName);
 			var load = function(pluginInstance){
-		    	modules[pluginName+"!"+pluginModuleName] = {};
-		    	modules[pluginName+"!"+pluginModuleName].exports = pluginInstance;
-		    	if (!isDynamic && pluginName in usesCache) {
-		    		var url = _idToUrl(pluginModuleName);
-		    		if (cache[url] === undefined || url in reload) {
-		    			_getLastModified(url, function(lastModified){
-		    				if (lastModified) {
-			    				cachets[url] = lastModified;
-				    			_storeCache();
-		    				}
-		    			});
-		    			cache[url] = pluginInstance;
-		    			_storeCache();
-		    		}
-		    	}
+				modules[pluginName+"!"+pluginModuleName] = {};
+				modules[pluginName+"!"+pluginModuleName].exports = pluginInstance;
+				if (!isDynamic && pluginName in usesCache) {
+					var url = _idToUrl(pluginModuleName);
+					if (cache[url] === undefined || url in reload) {
+						_getLastModified(url, function(lastModified){
+							if (lastModified) {
+								cachets[url] = lastModified;
+								_storeCache();
+							}
+						});
+						cache[url] = pluginInstance;
+						_storeCache();
+					}
+				}
 				cb(pluginInstance);
 			};
 			load.fromText = function(name, text) {
-				_loadModule(name, function(){}, text);				
+				_loadModule(name, function(){}, text);
 			};
 			plugin.load(pluginModuleName, req, load, cfg);
 		});
 	};
-	
+
 	function _createRequire(id) {
 		var req = function(dependencies, callback) {
 			var root = modules[id];
@@ -388,7 +388,7 @@ var define;
 			}
 		};
 		req.toUrl = function(moduleResource) {
-			var url = _idToUrl(_expand(moduleResource)); 
+			var url = _idToUrl(_expand(moduleResource));
 			return url;
 		};
 		req.defined = function(moduleName) {
@@ -406,18 +406,18 @@ var define;
 		};
 		req.nameToUrl = function(moduleName, ext, relModuleMap) {
 			return moduleName + ext;
-	    };
-        // Dojo specific require properties and functions
-        req.cache = cache;
-        req.toAbsMid = function(id) {
-        	return _expand(id);
-        };
-        req.isXdUrl = function(url) {
-        	return false;
-        };
+		};
+		// Dojo specific require properties and functions
+		req.cache = cache;
+		req.toAbsMid = function(id) {
+			return _expand(id);
+		};
+		req.isXdUrl = function(url) {
+			return false;
+		};
 		return req;
 	};
-	
+
 	function _getTimestamps(timestampUrl, cb) {
 		var xhr = new XMLHttpRequest();
 		xhr.open("POST", timestampUrl, true);
@@ -484,18 +484,18 @@ var define;
 		if (isFunction(factory)) {
 			factory.toString().replace(commentRegExp, "").replace(cjsRequireRegExp, function (match, dep) {
 				dependencies.push("~#"+dep);
-            });
+			});
 			modules[id].factory = factory;
 		} else {
 			modules[id].literal = factory;
 		}
-		modules[id].dependencies = dependencies; 
+		modules[id].dependencies = dependencies;
 	};
-	
-    define.amd = {
-        plugins: true,
-        jQuery: true
-    };
+
+	define.amd = {
+		plugins: true,
+		jQuery: true
+	};
 
 	_require = function (dependencies, callback) {
 		if (isString(dependencies)) {
@@ -543,7 +543,7 @@ var define;
 			return undefined;
 		}
 	};
-	
+
 	modules["require"] = {};
 	modules["require"].exports = _require;
 	var cfg = {baseUrl: "./"};
@@ -622,17 +622,17 @@ var define;
 			callRequire(dependencies, callback);
 		}
 	};
-	
+
 	var pageLoaded = false;
 	var readyCallbacks = [];
-    
+
 	document.addEventListener("DOMContentLoaded", function() {
 		pageLoaded = true;
 		for (var i = 0; i < readyCallbacks.length; i++) {
 			readyCallbacks[i]();
 		}
 	}, false);
-	
+
 	if (!require) {
 		require = _require;
 		require.toUrl = function(moduleResource) {
