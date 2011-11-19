@@ -349,7 +349,7 @@ var define;
 			var load = function(pluginInstance){
 				modules[pluginName+"!"+pluginModuleName] = {};
 				modules[pluginName+"!"+pluginModuleName].exports = pluginInstance;
-				if (!isDynamic && pluginName in usesCache) {
+				if (pluginName in usesCache) {
 					var url = _idToUrl(pluginModuleName);
 					if (cache[url] === undefined || url in reload) {
 						_getLastModified(url, function(lastModified){
