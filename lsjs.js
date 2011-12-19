@@ -12,6 +12,8 @@ var define;
 	var commentRegExp = /(\/\*([\s\S]*?)\*\/|\/\/(.*)$)/mg;
 	/* Based on the cjs regexs in requirejs, modified slightly */
 	var cjsRequireRegExp = /[^\d\w\.]require\(["']([^'"\s]+)["']\)/g;
+	var cjsVarPrefixRegExp = /^~#/;
+	var pluginRegExp = /.+!/;
 
 	Iterator = function(array) {
 		this.array = array;
@@ -106,6 +108,10 @@ var define;
 	var cache = {};
 	var cachets = {};
 	var usesCache = {};
+	var queue = [];
+	var cblist = {};
+	var strands = [];
+	var circRefs = {};
 
 	var geval = window.execScript || eval;
 
@@ -115,7 +121,7 @@ var define;
 	function isArray(it) { return opts.call(it) === "[object Array]"; };
 	function isString(it) { return (typeof it == "string" || it instanceof String); };
 
-	function _getParentId() {
+	function _getCurrentId() {
 		return moduleStack.length > 0 ? moduleStack[moduleStack.length-1].id : "";
 	}
 
@@ -142,10 +148,10 @@ var define;
 		var isRelative = path.search(/^\./) === -1 ? false : true;
 		if (isRelative) {
 			var pkg;
-			if ((pkg = pkgs[_getParentId()])) {
+			if ((pkg = pkgs[_getCurrentId()])) {
 				path = pkg.name + "/" + path;
 			} else {
-				path = _getParentId() + "/../" + path;
+				path = _getCurrentId() + "/../" + path;
 			}
 			path = _normalize(path);
 		}
@@ -181,28 +187,15 @@ var define;
 
 	function _loadModule(id, cb, scriptText) {
 		var expandedId = _expand(id);
+		var dependentId = _getCurrentId();
+		if (cblist[expandedId] === undefined) {
+			cblist[expandedId] = [];
+		}
 		if (modules[expandedId] !== undefined) {
-			var count = 0;
-			function waitForLoad() {
-				count += 100;
-				if (count > 10000) {
-					throw new Error("timeout while waiting for ["+id+"] to load");
-				}
-				if (modules[expandedId].exports === undefined) {
-					setTimeout(function(){ waitForLoad(); }, 100);
-				} else {
-					cb(modules[id].exports);
-				}
-			};
-			if (modules[expandedId].exports === undefined) {
-				setTimeout(function(){ waitForLoad(); }, 100);
-			} else {
-				cb(modules[expandedId].exports);
-			}
+			cblist[expandedId].push({cb:cb, mid:dependentId});
 			return;
 		}
-		modules[expandedId] = {};
-		modules[expandedId].id = expandedId;
+		modules[expandedId] = {id: expandedId, exports: {}};
 
 		var url = _idToUrl(expandedId);
 		url += ".js";
@@ -210,17 +203,20 @@ var define;
 		var storedModule;
 		function _load() {
 			if (scriptText) {
-				_inject(modules[expandedId], scriptText, cb);
+				queue.push({id:expandedId, src: scriptText});
+				cblist[expandedId].push({cb:cb, mid:dependentId});
 			} else if (storedModule === undefined || storedModule === null) {
 				_getModule(url, function(_url, scriptSrc, ts) {
 					var entry = {url: _url, timestamp: ts};
 					loaded[_url] = ts;
 					storage.set("loaded!"+window.location.pathname, loaded);
 					storage.set(_url, {src: scriptSrc, timestamp: ts});
-					_inject(modules[expandedId], scriptSrc, cb);
+					queue.push({id:expandedId, src: scriptSrc});
+					cblist[expandedId].push({cb:cb, mid:dependentId});
 				});
 			} else {
-				_inject(modules[expandedId], storedModule.src, cb);
+				queue.push({id:expandedId, src: storedModule.src});
+				cblist[expandedId].push({cb:cb, mid:dependentId});
 			}
 		};
 		if (cfg.forceLoad || url in reload) {
@@ -237,7 +233,7 @@ var define;
 		}
 	};
 
-	function _inject(module, scriptSrc, cb) {
+	function _inject(module, scriptSrc) {
 		moduleStack.push(module);
 		if (cfg.injectViaScriptTag) {
 			var script = document.createElement('script');
@@ -249,9 +245,8 @@ var define;
 		} else {
 			geval(scriptSrc+"//@ sourceURL="+module.id);
 		}
-		_loadModuleDependencies(module.id, function(exports){
+		_loadModuleDependencies(module.id, function(){
 			moduleStack.pop();
-			cb(exports);
 		});
 	};
 
@@ -271,63 +266,77 @@ var define;
 	};
 
 	function _loadModuleDependencies(id, cb) {
-		var args = [];
 		var m = modules[id];
-		m.exports = {};
+		m.args = [];
+		m.deploaded = {};
+		var idx = 0;
 		var iterate = function(itr) {
 			if (itr.hasMore()) {
 				var dependency = itr.next();
-				if (dependency.match(".+!")) {
+				var argIdx = idx++;
+				var depname;
+				if (dependency.match(pluginRegExp)) {
 					var add = true;
-					if (dependency.match("^~#")) {
+					if (dependency.match(cjsVarPrefixRegExp)) {
 						dependency = dependency.substring(2);
 						add = false;
 					}
 					var pluginName = dependency.substring(0, dependency.indexOf('!'));
 					pluginName = _expand(pluginName);
 					var pluginModuleName = dependency.substring(dependency.indexOf('!')+1);
+					if (add) {
+						m.dependencies[argIdx] = pluginName + "!"+pluginModuleName;
+						m.args[argIdx] = undefined;
+						depname = pluginName + "!"+pluginModuleName;
+					} else {
+						depname = "~#"+pluginName + "!"+pluginModuleName;
+					}
+					m.deploaded[depname] = false;
 					_loadPlugin(pluginName, pluginModuleName, function(pluginInstance) {
 						if (add) {
-							args.push(pluginInstance);
+							m.args[argIdx] = pluginInstance;
 						}
-						iterate(itr);
+						m.deploaded[depname] = true;
 					});
+					iterate(itr);
 				} else if (dependency === 'require') {
-					args.push(_createRequire(_getParentId()));
+					m.args[argIdx] = _createRequire(_getCurrentId());
+					m.deploaded['require'] = true;
 					iterate(itr);
 				} else if (dependency === 'module') {
-					args.push(m);
+					m.args[argIdx] = m;
+					m.deploaded['module'] = true;
 					iterate(itr);
 				} else if (dependency === 'exports') {
-					args.push(m.exports);
+					m.args[argIdx] = m.exports;
+					m.deploaded['exports'] = true;
 					iterate(itr);
 				} else {
 					var add = true;
-					if (dependency.match("^~#")) {
+					if (dependency.match(cjsVarPrefixRegExp)) {
 						dependency = dependency.substring(2);
 						add = false;
 					}
+					var expandedId = _expand(dependency);
+					if (add) {
+						m.dependencies[argIdx] = expandedId;
+						m.args[argIdx] = modules[expandedId] === undefined ? undefined : modules[expandedId].exports;
+						depname = expandedId;
+					} else {
+						depname = "~#"+expandedId;
+					}
+					m.deploaded[depname] = false;
 					_loadModule(dependency, function(module){
 						if (add) {
-							args.push(module);
+							m.args[argIdx] = module;
 						}
-						iterate(itr);
+						m.deploaded[depname] = true;
 					});
+					iterate(itr);
 				}
 			} else {
-				if (m.factory !== undefined) {
-					if (args.length < 1) {
-						var req = _createRequire(_getParentId());
-						args = args.concat(req, m.exports, m);
-					}
-					var ret = m.factory.apply(null, args);
-					if (ret) {
-						m.exports = ret;
-					}
-				} else {
-					m.exports = m.literal;
-				}
-				cb(m.exports);
+				m.cjsreq = _createRequire(_getCurrentId());
+				cb();
 			}
 		};
 		iterate(new Iterator(m.dependencies));
@@ -347,6 +356,9 @@ var define;
 			}
 			var req = _createRequire(pluginName);
 			var load = function(pluginInstance){
+				if (pluginInstance === undefined) {
+					pluginInstance = null;
+				}
 				modules[pluginName+"!"+pluginModuleName] = {};
 				modules[pluginName+"!"+pluginModuleName].exports = pluginInstance;
 				if (pluginName in usesCache) {
@@ -475,7 +487,7 @@ var define;
 		if (!isString(id)) {
 			factory = dependencies;
 			dependencies = id;
-			id = _getParentId();
+			id = _getCurrentId();
 		}
 		if (!isArray(dependencies)) {
 			factory = dependencies;
@@ -501,7 +513,10 @@ var define;
 		if (isString(dependencies)) {
 			var id = dependencies;
 			id = _expand(id);
-			if (id.match(".+!")) {
+			if (id !== 'exports' && id != 'module' && id !== 'require') {
+				strands[id] = false;
+			}
+			if (id.match(pluginRegExp)) {
 				var pluginName = id.substring(0, id.indexOf('!'));
 				pluginName = _expand(pluginName);
 				var plugin = modules[pluginName].exports;
@@ -515,13 +530,20 @@ var define;
 				}
 				id = pluginName+"!"+pluginModuleName;
 			}
-			return modules[id] === undefined ? undefined : modules[id].exports;
+			if (modules[id] === undefined) {
+				throw new Error("Module ["+id+"] has not been loaded");
+			}
+			return modules[id].exports;
 		} else if (isArray(dependencies)) {
 			var args = [];
 			var iterate = function(itr) {
 				if (itr.hasMore()) {
 					var dependency = itr.next();
-					if (dependency.match(".+!")) {
+					var id = _expand(dependency);
+					if (id !== 'exports' && id != 'module' && id !== 'require') {
+						strands[id] = false;
+					}
+					if (dependency.match(pluginRegExp)) {
 						var pluginName = dependency.substring(0, dependency.indexOf('!'));
 						pluginName = _expand(pluginName);
 						var pluginModuleName = dependency.substring(dependency.indexOf('!')+1);
@@ -546,6 +568,7 @@ var define;
 
 	modules["require"] = {};
 	modules["require"].exports = _require;
+	modules["require"].loaded = true;
 	var cfg = {baseUrl: "./"};
 
 	lsjs = function(config, dependencies, callback) {
@@ -624,13 +647,12 @@ var define;
 	};
 
 	var pageLoaded = false;
+	var modulesLoaded = false;
+	var domLoaded = false;
 	var readyCallbacks = [];
 
 	document.addEventListener("DOMContentLoaded", function() {
-		pageLoaded = true;
-		for (var i = 0; i < readyCallbacks.length; i++) {
-			readyCallbacks[i]();
-		}
+		domLoaded = true;
 	}, false);
 
 	if (!require) {
@@ -640,4 +662,148 @@ var define;
 			return url;
 		};
 	}
+
+	function queueProcessor() {
+		try {
+			var iterate = function(itr) {
+				if (itr.hasMore()) {
+					var toInject = itr.next();
+					_inject(modules[toInject.id], toInject.src);
+					iterate(itr);
+				} else {
+					queue = [];
+				}
+			};
+			iterate(new Iterator(queue));
+
+			var isCircular = function(id, module) {
+				return circRefs[module.id] && circRefs[module.id].refs[id] ? true : false;
+			};
+
+			var isComplete = function(module) {
+				var complete = false;
+				if (module.cjsreq) {
+					complete = true;
+					for (var dep in module.deploaded) {
+						var iscjs = dep.match(cjsVarPrefixRegExp);
+						if (module.deploaded[dep] === false && isCircular(iscjs ? dep.substring(2) : dep, module) === false) {
+							complete = false;
+							break;
+						}
+					}
+				}
+				return complete;
+			};
+
+			var allLoaded = true;
+			var mid;
+			for (mid in modules) {
+				if (!m || m.loaded !== true) {
+					allLoaded = false;
+				}
+				if (mid !== "require") {
+					var m = modules[mid];
+					if (m.loaded !== true && isComplete(m)) {
+						if (m.factory !== undefined) {
+							if (m.args.length < 1) {
+								m.args = m.args.concat(m.cjsreq, m.exports, m);
+							}
+							var ret = m.factory.apply(null, m.args);
+							if (ret) {
+								m.exports = ret;
+							}
+						} else {
+							m.exports = m.literal;
+						}
+						m.loaded = true;
+					}
+				}
+			}
+
+			if (allLoaded) {
+				modulesLoaded = true;
+			}
+
+			function findCircRefs(id, seen, scanned) {
+				if (id.match(pluginRegExp)) {
+					return true;
+				}
+				var module = modules[id];
+				var complete = false;
+				if (module && module.cjsreq) {
+					seen.push(module.id);
+					complete = true;
+					for (var dep in module.deploaded) {
+						if (dep !== 'exports' && dep != 'module' && dep !== 'require') {
+							if (scanned[dep] !== undefined) {
+								continue;
+							}
+							var iscjs = dep.match(cjsVarPrefixRegExp);
+							var found = false;
+				            var dup;
+				            for (var i = 0; i < seen.length; i++) {
+				                if (seen[i] === (iscjs ? dep.substring(2) : dep)) {
+				                    found = true;
+				                    dup = dep;
+				                    break;
+				                }
+				            }
+							if (found) {
+								if (circRefs[module.id] === undefined) {
+									circRefs[module.id] = {refs: {}};
+								}
+								circRefs[module.id].refs[iscjs ? dep.substring(2) : dep] = dep;
+							} else {
+								complete = findCircRefs(iscjs ? dep.substring(2) : dep, seen, scanned);
+							}
+						}
+					}
+					scanned[module.id] = true;
+					seen.pop();
+				}
+				return complete;
+			}
+
+			for (var id in strands) {
+				if (!strands[id]) {
+					strands[id] = findCircRefs(id, [], {});
+				}
+			}
+
+			var savedStack;
+
+			var cbiterate = function(exports, itr) {
+				if (itr.hasMore()) {
+					var cbinst = itr.next();
+					if (cbinst.mid !== "") {
+						var root = modules[cbinst.mid];
+						savedStack = moduleStack;
+						moduleStack = [root];
+					}
+					cbinst.cb(exports);
+					if (cbinst.mid !== "") {
+						moduleStack = savedStack;
+					}
+					cbiterate(exports, itr);
+				} else {
+					delete cblist[mid];
+				}
+			};
+			for (mid in cblist) {
+				if (modules[mid].loaded) {
+					cbiterate(modules[mid].exports, new Iterator(cblist[mid]));
+				}
+			}
+			if (!pageLoaded && domLoaded && modulesLoaded) {
+				pageLoaded = true;
+				for (var i = 0; i < readyCallbacks.length; i++) {
+					readyCallbacks[i]();
+				}
+			}
+			setTimeout(function(){ queueProcessor(); }, 10);
+		} catch (e) {
+			console.log("queueProcessor error : "+e);
+		}
+	};
+	queueProcessor();
 }());
