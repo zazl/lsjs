@@ -14,7 +14,7 @@ var FileSystemStorage;
 		this.initialized = false;
 		this.size = size;
 	};
-	
+
 	FileSystemStorage.prototype = {
 		_getFileName: function(key) {
 			return key.replace(fileNameRegx, "_");
@@ -70,13 +70,13 @@ var FileSystemStorage;
 		},
 		isSupported: function() {
 			return !!window.requestFileSystem;
-		},	
+		},
 		remove: function(key, handler, errorHandler) {
 			var scope = this;
 			this._initialize(function() {
 				scope.dirEntry.getFile(
-				scope._getFileName(key), 
-				{create: false}, 
+				scope._getFileName(key),
+				{create: false},
 				function(fileEntry) {
 				    fileEntry.remove(function() {
 						if (handler) {
@@ -90,7 +90,7 @@ var FileSystemStorage;
 				    		throw new Error(errMsg);
 				    	}
 				    });
-				}, 
+				},
 				function(error) {
 			    	var errMsg = scope._getErrMsg(error);
 			    	if (errorHandler) {
@@ -105,8 +105,8 @@ var FileSystemStorage;
 			var scope = this;
 			this._initialize(function() {
 				scope.dirEntry.getFile(
-				scope._getFileName(key), 
-				{create: false}, 
+				scope._getFileName(key),
+				{create: false},
 				function(fileEntry) {
 					fileEntry.file(function(file) {
 						var reader = new FileReader();
@@ -114,7 +114,7 @@ var FileSystemStorage;
 							handler(JSON.parse(this.result));
 					    };
 					    reader.readAsText(file);
-					}, 
+					},
 					function(error) {
 				    	var errMsg = scope._getErrMsg(error);
 				    	if (errorHandler) {
@@ -123,7 +123,7 @@ var FileSystemStorage;
 				    		throw new Error(errMsg);
 				    	}
 					});
-				}, 
+				},
 				function(error) {
 			    	var errMsg = scope._getErrMsg(error);
 			    	if (errorHandler) {
@@ -138,8 +138,8 @@ var FileSystemStorage;
 			var scope = this;
 			this._initialize(function() {
 				scope.dirEntry.getFile(
-				scope._getFileName(key), 
-				{create: true}, 
+				scope._getFileName(key),
+				{create: true},
 				function(fileEntry) {
 					fileEntry.createWriter(function(fileWriter) {
 						var bb = new WebKitBlobBuilder();
@@ -153,7 +153,7 @@ var FileSystemStorage;
 				    		throw new Error(errMsg);
 				    	}
 					});
-				}, 
+				},
 				function(error) {
 			    	var errMsg = scope._getErrMsg(error);
 			    	if (errorHandler) {
