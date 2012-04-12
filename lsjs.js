@@ -378,6 +378,7 @@ var define;
 			};
 			load.fromText = function(name, text) {
 				_loadModule(name, function(){}, text);
+				queueProcessor();
 			};
 			plugin.load(pluginModuleName, req, load, cfg);
 		});
@@ -388,6 +389,17 @@ var define;
 			var root = modules[id];
 			var savedStack = moduleStack;
 			moduleStack = [root];
+			if (isArray(dependencies)) {
+				for (var i = 0; i < dependencies.length; i++) {
+					if (dependencies[i] !== 'exports' && dependencies[i] != 'module' && dependencies[i] !== 'require') {
+						strands[dependencies[i]] = false;
+					}
+				}
+			} else if (isString(dependencies)) {
+				if (dependencies !== 'exports' && dependencies != 'module' && dependencies !== 'require') {
+					strands[dependencies] = false;
+				}
+			}
 			if (isFunction(callback)) {
 				_require(dependencies, function() {
 					moduleStack = savedStack;
@@ -513,9 +525,6 @@ var define;
 		if (isString(dependencies)) {
 			var id = dependencies;
 			id = _expand(id);
-			if (id !== 'exports' && id != 'module' && id !== 'require') {
-				strands[id] = false;
-			}
 			if (id.match(pluginRegExp)) {
 				var pluginName = id.substring(0, id.indexOf('!'));
 				pluginName = _expand(pluginName);
@@ -539,10 +548,6 @@ var define;
 			var iterate = function(itr) {
 				if (itr.hasMore()) {
 					var dependency = itr.next();
-					var id = _expand(dependency);
-					if (id !== 'exports' && id != 'module' && id !== 'require') {
-						strands[id] = false;
-					}
 					if (dependency.match(pluginRegExp)) {
 						var pluginName = dependency.substring(0, dependency.indexOf('!'));
 						pluginName = _expand(pluginName);
@@ -630,12 +635,18 @@ var define;
 		}
 		function callRequire(dependencies, callback) {
 			if (isFunction(callback)) {
+				for (var i = 0; i < dependencies.length; i++) {
+					if (dependencies[i] !== 'exports' && dependencies[i] != 'module' && dependencies[i] !== 'require') {
+						strands[dependencies[i]] = false;
+					}
+				}
 				_require(dependencies, function() {
 					callback.apply(null, arguments);
 				});
 			} else {
 				_require(dependencies);
 			}
+			queueProcessor();
 		};
 		if (cfg.timestampUrl) {
 			_getTimestamps(cfg.timestampUrl, function(){
@@ -664,7 +675,43 @@ var define;
 	}
 
 	function queueProcessor() {
+		var poller = function() {
+			if (processQueues()) { return; }
+			setTimeout(poller, 0);
+		};
+		poller();
+	};
+
+	function processCallbacks() {
+		var savedStack;
+
+		var cbiterate = function(exports, itr) {
+			if (itr.hasMore()) {
+				var cbinst = itr.next();
+				if (cbinst.mid !== "") {
+					var root = modules[cbinst.mid];
+					savedStack = moduleStack;
+					moduleStack = [root];
+				}
+				cbinst.cb(exports);
+				if (cbinst.mid !== "") {
+					moduleStack = savedStack;
+				}
+				cbiterate(exports, itr);
+			} else {
+				delete cblist[mid];
+			}
+		};
+		for (mid in cblist) {
+			if (modules[mid].loaded) {
+				cbiterate(modules[mid].exports, new Iterator(cblist[mid]));
+			}
+		}
+	};
+
+	function processQueues() {
 		try {
+			processCallbacks();
 			var iterate = function(itr) {
 				if (itr.hasMore()) {
 					var toInject = itr.next();
@@ -696,13 +743,13 @@ var define;
 			};
 
 			var allLoaded = true;
-			var mid;
+			var mid, m;
 			for (mid in modules) {
-				if (!m || m.loaded !== true) {
+				m = modules[mid];
+				if (!m || m.loaded !== true && !mid.match(pluginRegExp)) {
 					allLoaded = false;
 				}
 				if (mid !== "require") {
-					var m = modules[mid];
 					if (m.loaded !== true && isComplete(m)) {
 						if (m.factory !== undefined) {
 							if (m.args.length < 1) {
@@ -765,45 +812,21 @@ var define;
 			}
 
 			for (var id in strands) {
-				if (!strands[id]) {
-					strands[id] = findCircRefs(id, [], {});
-				}
+				strands[id] = findCircRefs(id, [], {});
 			}
 
-			var savedStack;
+			processCallbacks();
 
-			var cbiterate = function(exports, itr) {
-				if (itr.hasMore()) {
-					var cbinst = itr.next();
-					if (cbinst.mid !== "") {
-						var root = modules[cbinst.mid];
-						savedStack = moduleStack;
-						moduleStack = [root];
-					}
-					cbinst.cb(exports);
-					if (cbinst.mid !== "") {
-						moduleStack = savedStack;
-					}
-					cbiterate(exports, itr);
-				} else {
-					delete cblist[mid];
-				}
-			};
-			for (mid in cblist) {
-				if (modules[mid].loaded) {
-					cbiterate(modules[mid].exports, new Iterator(cblist[mid]));
-				}
-			}
 			if (!pageLoaded && domLoaded && modulesLoaded) {
 				pageLoaded = true;
 				for (var i = 0; i < readyCallbacks.length; i++) {
 					readyCallbacks[i]();
 				}
 			}
-			setTimeout(function(){ queueProcessor(); }, 10);
 		} catch (e) {
 			console.log("queueProcessor error : "+e);
+			allLoaded = true;
 		}
+		return allLoaded;
 	};
-	queueProcessor();
 }());
