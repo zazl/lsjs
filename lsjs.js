@@ -574,12 +574,13 @@ var define;
 	modules["require"] = {};
 	modules["require"].exports = _require;
 	modules["require"].loaded = true;
-	var cfg = {baseUrl: "./"};
 
-	lsjs = function(config, dependencies, callback) {
-		if (!isArray(config) && typeof config == "object") {
+	var cfg;
+
+	function processConfig(config) {
+		if (!cfg) {
 			var i;
-			cfg = config;
+			cfg = config || {};
 			if (cfg.paths) {
 				for (var p in cfg.paths) {
 					var path = cfg.paths[p];
@@ -589,9 +590,16 @@ var define;
 			if (cfg.packages) {
 				for (i = 0; i < cfg.packages.length; i++) {
 					var pkg = cfg.packages[i];
+					if (!pkg.location) {
+						pkg.location = pkg.name;
+					}
+					if (!pkg.main) {
+						pkg.main = "main";
+					}
 					pkgs[pkg.name] = pkg;
 				}
 			}
+
 			if (cfg.storageImpl) {
 				storage = cfg.storageImpl;
 				var requiredProps = ["get", "set", "remove", "isSupported"];
@@ -601,19 +609,30 @@ var define;
 					}
 				}
 			}
+
 			if (cfg.usesCache) {
 				for (i = 0; i < cfg.usesCache.length; i++) {
 					usesCache[cfg.usesCache[i]] = true;
 				}
 			}
+
 			cfg.baseUrl = cfg.baseUrl || "./";
+
+			if (cfg.baseUrl.charAt(0) !== '/') {
+				cfg.baseUrl = _normalize(window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/')) + '/'+ cfg.baseUrl);
+			}
+		}
+	};
+
+	lsjs = function(config, dependencies, callback) {
+		if (!isArray(config) && typeof config == "object") {
+			processConfig(config);
 		} else {	
 			callback = dependencies;
 			dependencies = config;
+			processConfig(typeof lsjsConfig === 'undefined' ? {} : lsjsConfig);
 		}
-		if (cfg.baseUrl.charAt(0) !== '/') {
-			cfg.baseUrl = _normalize(window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/')) + '/'+ cfg.baseUrl);
-		}
+
 		if (!storage.isSupported()) {
 			throw new Error("Storage implementation is unsupported");
 		}
@@ -667,7 +686,7 @@ var define;
 	}, false);
 
 	if (!require) {
-		require = _require;
+		require = lsjs;
 		require.toUrl = function(moduleResource) {
 			var url = _idToUrl(_expand(moduleResource)); 
 			return url;
