@@ -653,12 +653,12 @@ var define;
 			dependencies = [];
 		}
 		function callRequire(dependencies, callback) {
-			if (isFunction(callback)) {
-				for (var i = 0; i < dependencies.length; i++) {
-					if (dependencies[i] !== 'exports' && dependencies[i] != 'module' && dependencies[i] !== 'require') {
-						strands[dependencies[i]] = false;
-					}
+			for (var i = 0; i < dependencies.length; i++) {
+				if (dependencies[i] !== 'exports' && dependencies[i] != 'module' && dependencies[i] !== 'require') {
+					strands[dependencies[i]] = false;
 				}
+			}
+			if (isFunction(callback)) {
 				_require(dependencies, function() {
 					callback.apply(null, arguments);
 				});
