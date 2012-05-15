@@ -108,7 +108,6 @@ var define;
 	var cache = {};
 	var cachets = {};
 	var usesCache = {};
-	var queue = [];
 	var cblist = {};
 	var strands = [];
 	var circRefs = {};
@@ -203,20 +202,17 @@ var define;
 		var storedModule;
 		function _load() {
 			if (scriptText) {
-				queue.push({id:expandedId, src: scriptText});
-				cblist[expandedId].push({cb:cb, mid:dependentId});
+				_inject(expandedId, dependentId, cb, scriptText);
 			} else if (storedModule === undefined || storedModule === null) {
 				_getModule(url, function(_url, scriptSrc, ts) {
 					var entry = {url: _url, timestamp: ts};
 					loaded[_url] = ts;
 					storage.set("loaded!"+window.location.pathname, loaded);
 					storage.set(_url, {src: scriptSrc, timestamp: ts});
-					queue.push({id:expandedId, src: scriptSrc});
-					cblist[expandedId].push({cb:cb, mid:dependentId});
+					_inject(expandedId, dependentId, cb, scriptSrc);
 				});
 			} else {
-				queue.push({id:expandedId, src: storedModule.src});
-				cblist[expandedId].push({cb:cb, mid:dependentId});
+				_inject(expandedId, dependentId, cb, storedModule.src);
 			}
 		};
 		if (cfg.forceLoad || url in reload) {
@@ -233,7 +229,8 @@ var define;
 		}
 	};
 
-	function _inject(module, scriptSrc) {
+	function _inject(moduleId, dependentId, cb, scriptSrc) {
+		var module = modules[moduleId];
 		moduleStack.push(module);
 		if (cfg.injectViaScriptTag) {
 			var script = document.createElement('script');
@@ -247,6 +244,7 @@ var define;
 		}
 		_loadModuleDependencies(module.id, function(){
 			moduleStack.pop();
+			cblist[moduleId].push({cb:cb, mid:dependentId});
 		});
 	};
 
@@ -728,64 +726,57 @@ var define;
 		}
 	};
 
-	function processQueues() {
-		try {
-			processCallbacks();
-			var iterate = function(itr) {
-				if (itr.hasMore()) {
-					var toInject = itr.next();
-					_inject(modules[toInject.id], toInject.src);
-					iterate(itr);
-				} else {
-					queue = [];
-				}
-			};
-			iterate(new Iterator(queue));
+	function processModules() {
+		var isCircular = function(id, module) {
+			return circRefs[module.id] && circRefs[module.id].refs[id] ? true : false;
+		};
 
-			var isCircular = function(id, module) {
-				return circRefs[module.id] && circRefs[module.id].refs[id] ? true : false;
-			};
-
-			var isComplete = function(module) {
-				var complete = false;
-				if (module.cjsreq) {
-					complete = true;
-					for (var dep in module.deploaded) {
-						var iscjs = dep.match(cjsVarPrefixRegExp);
-						if (module.deploaded[dep] === false && isCircular(iscjs ? dep.substring(2) : dep, module) === false) {
-							complete = false;
-							break;
-						}
-					}
-				}
-				return complete;
-			};
-
-			var allLoaded = true;
-			var mid, m;
-			for (mid in modules) {
-				m = modules[mid];
-				if (!m || m.loaded !== true && !mid.match(pluginRegExp)) {
-					allLoaded = false;
-				}
-				if (mid !== "require") {
-					if (m.loaded !== true && isComplete(m)) {
-						if (m.factory !== undefined) {
-							if (m.args.length < 1) {
-								m.args = m.args.concat(m.cjsreq, m.exports, m);
-							}
-							var ret = m.factory.apply(null, m.args);
-							if (ret) {
-								m.exports = ret;
-							}
-						} else {
-							m.exports = m.literal;
-						}
-						m.loaded = true;
+		var isComplete = function(module) {
+			var complete = false;
+			if (module.cjsreq) {
+				complete = true;
+				for (var dep in module.deploaded) {
+					var iscjs = dep.match(cjsVarPrefixRegExp);
+					if (module.deploaded[dep] === false && isCircular(iscjs ? dep.substring(2) : dep, module) === false) {
+						complete = false;
+						break;
 					}
 				}
 			}
+			return complete;
+		};
 
+		var allLoaded = true;
+		var mid, m;
+		for (mid in modules) {
+			m = modules[mid];
+			if (!m || m.loaded !== true && !mid.match(pluginRegExp)) {
+				allLoaded = false;
+			}
+			if (mid !== "require") {
+				if (m.loaded !== true && isComplete(m)) {
+					if (m.factory !== undefined) {
+						if (m.args.length < 1) {
+							m.args = m.args.concat(m.cjsreq, m.exports, m);
+						}
+						var ret = m.factory.apply(null, m.args);
+						if (ret) {
+							m.exports = ret;
+						}
+					} else {
+						m.exports = m.literal;
+					}
+					m.loaded = true;
+				}
+			}
+		}
+		return allLoaded;
+	};
+
+	function processQueues() {
+		try {
+			processCallbacks();
+			var allLoaded = processModules();
 			if (allLoaded) {
 				modulesLoaded = true;
 			}
@@ -841,6 +832,11 @@ var define;
 				for (var i = 0; i < readyCallbacks.length; i++) {
 					readyCallbacks[i]();
 				}
+				document.addEventListener("DOMActivate", function() {
+					if (!processModules()) {
+						queueProcessor();
+					}
+				}, false);
 			}
 		} catch (e) {
 			console.log("queueProcessor error : "+e);
