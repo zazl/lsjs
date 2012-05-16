@@ -197,6 +197,7 @@ var define;
 			cblist[expandedId] = [];
 		}
 		if (modules[expandedId] !== undefined) {
+			processModules();
 			if (modules[expandedId].loaded) {
 				var savedStack;
 				if (dependentId !== "") {
