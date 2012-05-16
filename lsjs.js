@@ -184,6 +184,12 @@ var define;
 		return path;
 	};
 
+	function fireZazlLoadEvent() {
+		var evt = document.createEvent('Events');
+		evt.initEvent('zazlload', true, false);
+		document.documentElement.dispatchEvent(evt);
+	};
+
 	function _loadModule(id, cb, scriptText) {
 		var expandedId = _expand(id);
 		var dependentId = _getCurrentId();
@@ -191,7 +197,20 @@ var define;
 			cblist[expandedId] = [];
 		}
 		if (modules[expandedId] !== undefined) {
-			cblist[expandedId].push({cb:cb, mid:dependentId});
+			if (modules[expandedId].loaded) {
+				var savedStack;
+				if (dependentId !== "") {
+					var root = modules[dependentId];
+					savedStack = moduleStack;
+					moduleStack = [root];
+				}
+				cb(modules[expandedId].exports);
+				if (dependentId !== "") {
+					moduleStack = savedStack;
+				}
+			} else {
+				cblist[expandedId].push({cb:cb, mid:dependentId});
+			}
 			return;
 		}
 		modules[expandedId] = {id: expandedId, exports: {}};
@@ -245,6 +264,9 @@ var define;
 		_loadModuleDependencies(module.id, function(){
 			moduleStack.pop();
 			cblist[moduleId].push({cb:cb, mid:dependentId});
+			if (pageLoaded) {
+				fireZazlLoadEvent();
+			}
 		});
 	};
 
@@ -376,7 +398,6 @@ var define;
 			};
 			load.fromText = function(name, text) {
 				_loadModule(name, function(){}, text);
-				queueProcessor();
 			};
 			plugin.load(pluginModuleName, req, load, cfg);
 		});
@@ -616,7 +637,7 @@ var define;
 
 			cfg.baseUrl = cfg.baseUrl || "./";
 
-			if (cfg.baseUrl.charAt(0) !== '/') {
+			if (cfg.baseUrl.charAt(0) !== '/' && !cfg.baseUrl.match(/^[\w\+\.\-]+:/)) {
 				cfg.baseUrl = _normalize(window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/')) + '/'+ cfg.baseUrl);
 			}
 		}
@@ -773,6 +794,52 @@ var define;
 		return allLoaded;
 	};
 
+	function processStrands() {
+		function findCircRefs(id, seen, scanned) {
+			if (id.match(pluginRegExp)) {
+				return true;
+			}
+			var module = modules[id];
+			var complete = false;
+			if (module && module.cjsreq) {
+				seen.push(module.id);
+				complete = true;
+				for (var dep in module.deploaded) {
+					if (dep !== 'exports' && dep != 'module' && dep !== 'require') {
+						if (scanned[dep] !== undefined) {
+							continue;
+						}
+						var iscjs = dep.match(cjsVarPrefixRegExp);
+						var found = false;
+						var dup;
+						for (var i = 0; i < seen.length; i++) {
+							if (seen[i] === (iscjs ? dep.substring(2) : dep)) {
+								found = true;
+								dup = dep;
+								break;
+							}
+						}
+						if (found) {
+							if (circRefs[module.id] === undefined) {
+								circRefs[module.id] = {refs: {}};
+							}
+							circRefs[module.id].refs[iscjs ? dep.substring(2) : dep] = dep;
+						} else {
+							complete = findCircRefs(iscjs ? dep.substring(2) : dep, seen, scanned);
+						}
+					}
+				}
+				scanned[module.id] = true;
+				seen.pop();
+			}
+			return complete;
+		}
+
+		for (var id in strands) {
+			strands[id] = findCircRefs(id, [], {});
+		}
+	};
+
 	function processQueues() {
 		try {
 			processCallbacks();
@@ -780,59 +847,14 @@ var define;
 			if (allLoaded) {
 				modulesLoaded = true;
 			}
-
-			function findCircRefs(id, seen, scanned) {
-				if (id.match(pluginRegExp)) {
-					return true;
-				}
-				var module = modules[id];
-				var complete = false;
-				if (module && module.cjsreq) {
-					seen.push(module.id);
-					complete = true;
-					for (var dep in module.deploaded) {
-						if (dep !== 'exports' && dep != 'module' && dep !== 'require') {
-							if (scanned[dep] !== undefined) {
-								continue;
-							}
-							var iscjs = dep.match(cjsVarPrefixRegExp);
-							var found = false;
-				            var dup;
-				            for (var i = 0; i < seen.length; i++) {
-				                if (seen[i] === (iscjs ? dep.substring(2) : dep)) {
-				                    found = true;
-				                    dup = dep;
-				                    break;
-				                }
-				            }
-							if (found) {
-								if (circRefs[module.id] === undefined) {
-									circRefs[module.id] = {refs: {}};
-								}
-								circRefs[module.id].refs[iscjs ? dep.substring(2) : dep] = dep;
-							} else {
-								complete = findCircRefs(iscjs ? dep.substring(2) : dep, seen, scanned);
-							}
-						}
-					}
-					scanned[module.id] = true;
-					seen.pop();
-				}
-				return complete;
-			}
-
-			for (var id in strands) {
-				strands[id] = findCircRefs(id, [], {});
-			}
-
+			processStrands();
 			processCallbacks();
-
 			if (!pageLoaded && domLoaded && modulesLoaded) {
 				pageLoaded = true;
 				for (var i = 0; i < readyCallbacks.length; i++) {
 					readyCallbacks[i]();
 				}
-				document.addEventListener("DOMActivate", function() {
+				document.addEventListener("zazlload", function() {
 					if (!processModules()) {
 						queueProcessor();
 					}
