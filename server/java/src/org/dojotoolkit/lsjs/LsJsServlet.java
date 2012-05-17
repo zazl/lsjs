@@ -32,7 +32,8 @@ public class LsJsServlet extends HttpServlet {
 	public LsJsServlet() {
 		format = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz");
 	}
-	protected void service(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+	
+	protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
 		@SuppressWarnings("unchecked")
 		List<Map<String, String>> timestamps = (List<Map<String, String>>)JSONParser.parse(request.getReader());
 		List<String> modified = new ArrayList<String>();
@@ -45,11 +46,21 @@ public class LsJsServlet extends HttpServlet {
 				synchronized(format) {
 					d = format.parse(ts);
 				}
-				String path = getServletContext().getRealPath(url.substring(request.getContextPath().length()));
-				File f = new File(path);
-				if (d.getTime() != f.lastModified()) {
-					logger.logp(Level.INFO, getClass().getName(), "service", "url ["+url+"] timstamp is different ["+d.getTime()+"] vs ["+f.lastModified()+"]");
-					modified.add(url);
+				String path = null;
+				String fullyQualifiedURL = request.getScheme() + "://"+ request.getServerName() + ":" + request.getServerPort()+request.getContextPath();
+				if (url.startsWith(request.getContextPath())) {
+					path = getServletContext().getRealPath(url.substring(request.getContextPath().length()));
+				} else if (url.startsWith(fullyQualifiedURL)){
+					path = getServletContext().getRealPath(url.substring(fullyQualifiedURL.length()));
+				}
+				if (path != null) {
+					File f = new File(path);
+					if (d.getTime() != f.lastModified()) {
+						logger.logp(Level.INFO, getClass().getName(), "service", "url ["+url+"] timstamp is different ["+d.getTime()+"] vs ["+f.lastModified()+"]");
+						modified.add(url);
+					}
+				} else {
+					logger.logp(Level.SEVERE, getClass().getName(), "service", "url ["+url+"] cannot be matched to a file path");
 				}
 			} catch (ParseException e) {
 				throw new ServletException(e);
