@@ -516,19 +516,23 @@ var define;
 	};
 
 	define = function (id, dependencies, factory) {
+		var simpleCJS = false;
 		if (!isString(id)) {
 			factory = dependencies;
 			dependencies = id;
 			id = _getCurrentId();
 		}
 		if (!isArray(dependencies)) {
+			simpleCJS = true;
 			factory = dependencies;
 			dependencies = [];
 		}
 		if (isFunction(factory)) {
-			factory.toString().replace(commentRegExp, "").replace(cjsRequireRegExp, function (match, dep) {
-				dependencies.push("~#"+dep);
-			});
+			if (simpleCJS) {
+				factory.toString().replace(commentRegExp, "").replace(cjsRequireRegExp, function (match, dep) {
+					dependencies.push("~#"+dep);
+				});
+			}
 			modules[id].factory = factory;
 		} else {
 			modules[id].literal = factory;
