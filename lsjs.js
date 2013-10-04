@@ -290,7 +290,7 @@ var define;
 		var m = modules[id];
 		m.args = [];
 		m.deploaded = {};
-		m.dependencies = [];
+		m.dependencies = m.dependencies || [];
 		var idx = 0;
 		var iterate = function(itr) {
 			if (itr.hasMore()) {
