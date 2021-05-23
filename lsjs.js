@@ -224,7 +224,7 @@ var define;
 			if (scriptText) {
 				_inject(expandedId, dependentId, cb, scriptText);
 			} else if (storedModule === undefined || storedModule === null) {
-				_getModule(url, cfg.timestampHeader, function(_url, scriptSrc, ts) {
+				_getModule(url, function(_url, scriptSrc, ts) {
 					var entry = {url: _url, timestamp: ts};
 					loaded[_url] = ts;
 					storage.set("loaded!"+window.location.pathname, loaded);
@@ -271,13 +271,13 @@ var define;
 		});
 	};
 
-	function _getModule(url, header, cb) {
+	function _getModule(url, cb) {
 		var xhr = new XMLHttpRequest();
 		xhr.open("GET", url+"?nocache="+new Date().valueOf(), true);
 		xhr.onreadystatechange = function() {
 			if (xhr.readyState == 4) {
 				if (xhr.status == 200) {
-					cb(url, xhr.responseText, xhr.getResponseHeader(header));
+					cb(url, xhr.responseText, _getTimestamp(xhr));
 				} else {
 					throw new Error("Unable to load ["+url+"]:"+xhr.status);
 				}
@@ -386,7 +386,7 @@ var define;
 				if (pluginName in usesCache) {
 					var url = _idToUrl(pluginModuleName);
 					if (cache[url] === undefined || url in reload) {
-						_getLastModified(url, cfg.timestampHeader, function(lastModified){
+						_getLastModified(url, function(lastModified){
 							if (lastModified) {
 								cachets[url] = lastModified;
 								_storeCache();
@@ -493,13 +493,23 @@ var define;
 		xhr.send(JSON.stringify(current));
 	};
 
-	function _getLastModified(url, header, cb) {
+	function _getTimestamp(xhr) {
+		var value;
+		for (var index = 0; index < cfg.timestampHeader.length; ++index) {
+			if (value = xhr.getResponseHeader(cfg.timestampHeader[index])) {
+				break;
+			}
+		}
+		return value;
+	}
+
+	function _getLastModified(url, cb) {
 		var xhr = new XMLHttpRequest();
 		xhr.open("HEAD", url, true);
 		xhr.onreadystatechange = function() {
 			if (xhr.readyState == 4) {
 				if (xhr.status == 200) {
-					cb(xhr.getResponseHeader(header));
+					cb(_getTimestamp(xhr));
 				} else {
 					cb();
 				}
@@ -655,7 +665,7 @@ var define;
 			}
 
 			if (!cfg.timestampHeader) {
-				cfg.timestampHeader = "Last-Modified";
+				cfg.timestampHeader = ["Last-Modified"];
 			}
 		}
 	};
