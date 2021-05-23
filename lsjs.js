@@ -277,7 +277,7 @@ var define;
 		xhr.onreadystatechange = function() {
 			if (xhr.readyState == 4) {
 				if (xhr.status == 200) {
-					cb(url, xhr.responseText, xhr.getResponseHeader("Last-Modified"));
+					cb(url, xhr.responseText, _getTimestamp(xhr));
 				} else {
 					throw new Error("Unable to load ["+url+"]:"+xhr.status);
 				}
@@ -493,13 +493,23 @@ var define;
 		xhr.send(JSON.stringify(current));
 	};
 
+	function _getTimestamp(xhr) {
+		var value;
+		for (var index = 0; index < cfg.timestampHeader.length; ++index) {
+			if (value = xhr.getResponseHeader(cfg.timestampHeader[index])) {
+				break;
+			}
+		}
+		return value;
+	}
+
 	function _getLastModified(url, cb) {
 		var xhr = new XMLHttpRequest();
 		xhr.open("HEAD", url, true);
 		xhr.onreadystatechange = function() {
 			if (xhr.readyState == 4) {
 				if (xhr.status == 200) {
-					cb(xhr.getResponseHeader("Last-Modified"));
+					cb(_getTimestamp(xhr));
 				} else {
 					cb();
 				}
@@ -652,6 +662,10 @@ var define;
 
 			if (cfg.baseUrl.charAt(0) !== '/' && !cfg.baseUrl.match(/^[\w\+\.\-]+:/)) {
 				cfg.baseUrl = _normalize(window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/')) + '/'+ cfg.baseUrl);
+			}
+
+			if (!cfg.timestampHeader) {
+				cfg.timestampHeader = ["Last-Modified"];
 			}
 		}
 	};
