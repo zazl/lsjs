@@ -1,4 +1,4 @@
-#lsjs
+# lsjs
 
 An AMD compliant loader that loads modules from localStorage. 
 
